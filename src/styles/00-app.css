@@ -1516,10 +1516,21 @@ body.tmv-scroll-locked {
   }
 }
 
+/* The detail panel is a stack of blocks — the field table, the "used by" list, the action row, and
+   sometimes a warning above them all. It was declared a two-column grid, with the two children that
+   should span it (`__actions`, `__related`) pinned to `grid-column: 1 / -1` and the rest left to
+   alternate between the tracks. That left the field table competing for a single track, and a track's
+   automatic minimum is its item's min-content width: the table is `table-layout: fixed` with a flat
+   14rem first column, so its min-content width *is* 14rem, the track opened to exactly that, and the
+   value column beside each label resolved to zero — the second cell of every row in an expanded
+   row's field list squeezed to a sliver of a character.
+
+   One column, because every child is a block. The `grid-column: 1 / -1` kept on the two full-width
+   children still resolves correctly against a single track, so they are left alone. */
 .tmv-detail {
   display: grid;
-  grid-template-columns: minmax(8rem, 14rem) 1fr;
-  gap: 0.25rem 1rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.25rem;
   padding: var(--tmv-space-card);
   border-inline-start: 3px solid var(--cds-border-strong, #8d8d8d);
   background-color: var(--cds-layer-01, #f4f4f4);
@@ -2177,10 +2188,14 @@ body.tmv-scroll-locked {
   background-color: var(--cds-layer-01, #f4f4f4);
 }
 
+/* The expanded row of the History log, and the same mistake as `.tmv-detail` above: its children are
+   blocks — the commit's field table, a subhead, a note, the table of recorded changes — and a
+   two-column grid put the first of them in the narrow track, where the field table's fixed 14rem
+   label column held the track open and left the value column at zero. */
 .tmv-commit-detail {
   display: grid;
-  grid-template-columns: minmax(8rem, 12rem) 1fr;
-  gap: 0.25rem 1rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.25rem;
 }
 
 /* -------------------------------------------------------------------------------------------- */
@@ -2623,9 +2638,7 @@ body.tmv-scroll-locked {
   .tmv-compare__panes {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .tmv-detail,
-  .tmv-form__fields,
-  .tmv-commit-detail {
+  .tmv-form__fields {
     grid-template-columns: minmax(7rem, 11rem) 1fr;
   }
 
@@ -2747,11 +2760,9 @@ body.tmv-scroll-locked {
   }
 
   .tmv-compare__panes,
-  .tmv-detail,
   .tmv-form__fields,
   .tmv-diff__field,
-  .tmv-diff__value,
-  .tmv-commit-detail {
+  .tmv-diff__value {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.25rem;
   }
