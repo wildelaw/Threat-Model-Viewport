@@ -67,7 +67,8 @@ needing one, something has gone wrong.
 ### Getting a build without building it
 
 CI attaches `dist/threat-model-viewport.html` to a GitHub Release for any `v*` tag, so the file a user
-downloads is the file the pipeline tested. Until a release is tagged, `node build.mjs` is the way.
+downloads is the file the pipeline tested — see the
+[latest release](https://github.com/wildelaw/Threat-Model-Viewport/releases/latest).
 
 ---
 
@@ -347,8 +348,6 @@ thresholds make flaky gates.
 
 The specification is written to avoid overclaiming and the code follows it. Points that matter:
 
-- **v0.1.0 — not yet released.** No `v*` tag has been pushed, so there is no downloadable artifact yet;
-  build from source.
 - **The application is not offline-capable.** Carbon's stylesheet comes from a pinned CDN
   ([ADR-0002](decisions/0002-carbon-via-cdn.md)) rather than being inlined, because inlining it would
   add ~939 KB to *every exported threat model file* and re-exporting is routine. Offline, the app
