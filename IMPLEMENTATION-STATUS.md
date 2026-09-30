@@ -665,10 +665,11 @@ the working copy untouched, and that confirming is the only thing that moves the
   never be satisfied. Nothing in the unit suite could see it — `store.origin-partitioned` and
   `sync.partition-detected` both call `detectStorageContext` by hand, so they assert the classifier
   answers correctly without ever asking whether boot supplies the right input — and the one test that
-  drives real boot on a real Firefox is the one that skips here. It was failing on CI, which has
-  Firefox, and had been since the first commit. Two changes: boot now reads the registry as it found it,
-  before seeding, and `sync.partition-detected` drives the real open path with the engine and protocol
-  supplied the way the platform supplies them, so the wiring is covered where the engine is not
+  drives real boot on a real Firefox is the one that skips here. That test was failing on CI, which
+  provisions Firefox and does launch it — on the first job the pipeline ever ran, and on every run of
+  this branch since. Two changes: boot now reads the registry as it found it, before seeding, and
+  `sync.partition-detected` drives the real open path with the engine and protocol supplied the way the
+  platform supplies them, so the wiring is covered where the engine is not
   available. The skip remains, and the honest reading of it is unchanged: the branch is verified in a
   Firefox *user agent* and not in a Firefox.
 
