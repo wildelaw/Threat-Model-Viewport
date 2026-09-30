@@ -23,6 +23,13 @@
 #    still exercised from scratch by the `build` job and by `build.clean-checkout` in the unit suite,
 #    so nothing is taken on trust here.
 #
+# 4. **The test job installs the one browser its accessibility stage needs.** Every other test in that
+#    job is browser-free, so the step looks redundant and is easy to lose — especially because it still
+#    passes locally, where a developer already has browsers from an earlier `playwright install`. It is
+#    not redundant: `a11y.axe-core` launches Chromium against the built artifact (§2's harness table),
+#    §8 makes that stage blocking, and the single `node --test` command imports the file whether or not
+#    a browser is present. Leaving provisioning to the e2e job alone is what broke this stage before.
+#
 # `perf.large-model` is "reported but not asserted" (§8). It is run twice on purpose: once inside the
 # blocking suite, where its *structural* assertions (a bounded DOM, a pager that names the whole
 # model) can fail a pull request, and once as its own non-blocking step so the timings are legible in
@@ -130,6 +137,23 @@ jobs:
       # without them.
       - name: Install test dependencies
         run: npm ci
+
+      # `a11y.axe-core` drives Chromium against the built artifact (§2), and it is a blocking stage
+      # (§8), so this job has to be able to launch one. It is the only test here that needs a browser;
+      # the rest of the harness is JavaScript under `node:test`.
+      #
+      # Cached on the Playwright version, like the e2e job's, but on a key of its own: that entry holds
+      # chromium *and* firefox (and webkit on a full run), and a shared key would let the two jobs evict
+      # each other's browsers.
+      - name: Cache browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-a11y
+
+      # Chromium only. §4's engine matrix belongs to the e2e job; accessibility is one engine.
+      - name: Install the browser the accessibility suite needs
+        run: npx playwright install --with-deps chromium
 
       # Every static, unit and a11y test reads `dist/threat-model-viewport.html` — the artifact that
       # ships, not the sources (§5). It arrives from the build job so that what is checked here is
