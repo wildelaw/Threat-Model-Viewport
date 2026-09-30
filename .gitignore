@@ -1,0 +1,11 @@
+node_modules/
+test-results/
+playwright-report/
+
+# Build output. `02-architecture.md` §3 lists it as git-ignored: `dist/threat-model-viewport.html` is
+# produced from a clean checkout by `node build.mjs` with no install step (REQ-SHELL-003), so the
+# artifact is reproducible and does not belong in the tree.
+dist/
+
+# macOS
+.DS_Store

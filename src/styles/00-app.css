@@ -1,0 +1,2819 @@
+/*
+ * 00-app.css — the application's own layer, applied over the pinned Carbon stylesheet.
+ *
+ * WHAT THIS FILE IS
+ *
+ * Carbon supplies every component: buttons, fields, tables, notifications, side nav, modal chrome.
+ * This file supplies three things Carbon cannot:
+ *
+ *   1. The frame. `src/index.html`'s regions have to be positioned relative to a fixed 3rem header
+ *      and a fixed side nav, and the offsets depend on which state the nav is in.
+ *   2. The `tmv-*` classes the modules emit for things with no Carbon component behind them — the
+ *      detail panel, the diff, the risk matrix, the diagram, the screens, the empty states.
+ *   3. The §7 breakpoints, which are the application's layout decisions and not Carbon's.
+ *
+ * THE ONE RULE THAT MATTERS MOST
+ *
+ * `[hidden] { display: none !important }` is below, and it is not a style preference. The UA
+ * stylesheet's `[hidden]` rule is a UA rule, so any *author* rule that sets `display` on the same
+ * element beats it. Almost every element the shell hides carries a Carbon class that sets `display`
+ * (`.cds--tabs{display:flex}`, `.cds--side-nav{…}`, `.cds--header__action{display:inline-flex}`), so
+ * without this reset `core.setHidden` silently does nothing to exactly the elements that matter:
+ * the tab strip on a failure screen, the side nav in the `sm` overlay, the storage indicator, the
+ * dirty flag. A `hidden` attribute that does not hide is worse than no attribute, because the state
+ * is reported as set and the pixels disagree.
+ *
+ * THE CSP SHAPES THE STYLE, NOT JUST THE SCRIPT
+ *
+ * `style-src` is a hash with no `'unsafe-inline'`, so there is no `style` attribute anywhere in this
+ * application and there cannot be one. Everything that would normally be an inline style is a
+ * class, a `data-*` attribute selected in this file, or an SVG presentation attribute. That is why
+ * the quota meter's fill width comes from `data-level` and why the risk band is a class per band
+ * rather than a colour written onto the element.
+ *
+ * WHAT WAS VERIFIED AGAINST THE PINNED STYLESHEET
+ *
+ * The Carbon facts this file depends on were read out of `@carbon/styles@1.116.0/css/styles.min.css`
+ * — the only CSS file that package ships — rather than from the documentation, which is what V3 says
+ * to do. The results are recorded in `12-widgets.js`'s `CLS` comment; the ones that shape layout here:
+ *
+ *   · `.cds--side-nav--collapsed` is `transform: translateX(-16rem)` — off-canvas, *not* a 3rem rail
+ *     (that is `.cds--side-nav--rail`). So the shell's one collapsed/expanded flag means different
+ *     things at different widths and this file supplies the difference.
+ *   · `.cds--side-nav--ux` sets `inline-size: 0` below 66rem, which would erase the rail entirely.
+ *   · `.cds--content` already carries `margin-inline-start: 3rem` and `margin-block-start: 3rem`,
+ *     which is exactly the 3rem rail and the fixed header.
+ *   · there is no `.cds--grid` rule and no `.cds--header__menu-trigger` rule in that file at all.
+ *   · `is-visible` on `.cds--modal` is correct: the base class is `visibility: hidden` and
+ *     `.is-visible` sets `visibility: inherit` — so nothing above `#tmv-layers` may be hidden.
+ *
+ * Every rule that overrides a Carbon width uses a two-class selector (`.tmv-side-nav.cds--side-nav--…`)
+ * so it wins on specificity rather than on source order. Relying on load order against a minified
+ * stylesheet we do not control is the kind of thing that breaks on a version bump with no diff to
+ * read.
+ */
+
+/* -------------------------------------------------------------------------------------------- */
+/* 1. Tokens                                                                                     */
+/* -------------------------------------------------------------------------------------------- */
+
+:root {
+  --tmv-font-sans: "IBM Plex Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --tmv-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --tmv-header-h: 3rem;
+  --tmv-nav-w: 16rem;
+  --tmv-rail-w: 3rem;
+  --tmv-gap: 1rem;
+  --tmv-radius: 2px;
+  --tmv-radius-card: 4px;
+  --tmv-border: 1px solid var(--cds-border-subtle, #e0e0e0);
+  --tmv-shadow-raise: 0 1px 2px rgba(0, 0, 0, 0.08), 0 1px 1px rgba(0, 0, 0, 0.04);
+
+  /* ---------------------------------------------------------------------------------------------
+     The fluid scale.
+
+     Every size below interpolates between the `sm` viewport (320px) and a large desktop (1600px),
+     and the two ends are the only numbers worth reading in these expressions — `clamp()` holds the
+     result between them, so the middle term is just "how fast to travel". They are written as
+     `min + slope·vw` rather than as a bare `vw` so that the floor is a real floor: a percentage-only
+     size collapses toward zero on a narrow window, and this application is required to be readable
+     at 320px (REQ-UI-006).
+
+     What is deliberately *not* on this scale is anything a test pins. `--tmv-header-h` stays 3rem
+     because `e2e/shell.spec.mjs` asserts the header is exactly 48px, `--tmv-nav-w` stays 16rem
+     because Carbon's own off-canvas rule is `translateX(-16rem)` and a fluid nav would peek out from
+     under it, and the root font size is untouched because a fluid `html { font-size }` would rescale
+     Carbon's `rem`-based component sizes too, which is the one thing we do not control. Type scales;
+     the components' own metrics do not, and that is what keeps Carbon looking like Carbon.
+     --------------------------------------------------------------------------------------------- */
+  --tmv-text-2xs: clamp(0.6875rem, 0.671875rem + 0.078125vw, 0.75rem); /* 11 → 12px */
+  --tmv-text-xs: clamp(0.75rem, 0.734375rem + 0.078125vw, 0.8125rem); /* 12 → 13px */
+  --tmv-text-sm: clamp(0.875rem, 0.84375rem + 0.15625vw, 1rem); /* 14 → 16px */
+  --tmv-text-md: clamp(1rem, 0.96875rem + 0.15625vw, 1.125rem); /* 16 → 18px */
+  --tmv-text-lg: clamp(1.125rem, 1.0625rem + 0.3125vw, 1.375rem); /* 18 → 22px */
+  --tmv-text-xl: clamp(1.5rem, 1.34375rem + 0.78125vw, 2.125rem); /* 24 → 34px */
+
+  /* The page gutter, the space between blocks, and the space inside a card. The gutter is the one
+     that matters most: a fixed 2rem padding costs a 320px screen 12% of its width and a 1600px screen
+     almost nothing, so it is the padding that should scale the least at the bottom and the most in
+     the middle. */
+  --tmv-space-page: clamp(1rem, 0.5rem + 2.5vw, 3rem);
+  --tmv-space-block: clamp(1rem, 0.75rem + 1.25vw, 2rem);
+  --tmv-space-card: clamp(0.75rem, 0.625rem + 0.625vw, 1.25rem);
+
+  /* A band colour per risk level, declared once and used by the matrix and its legend together, so
+     the two cannot drift apart. Text sits on its own layer rather than on these, which is what keeps
+     the level legible without relying on the colour (REQ-UI-007: colour is never the only carrier). */
+  --tmv-band-very-low: #defbe6;
+  --tmv-band-low: #a7f0ba;
+  --tmv-band-medium: #f1c21b;
+  --tmv-band-high: #ff832b;
+  --tmv-band-very-high: #da1e28;
+  --tmv-band-critical: #750e13;
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 2. The reset that makes `hidden` mean hidden                                                  */
+/* -------------------------------------------------------------------------------------------- */
+
+[hidden] {
+  display: none !important;
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 3. Frame: document, skip link, noscript                                                       */
+/* -------------------------------------------------------------------------------------------- */
+
+html {
+  background-color: var(--cds-background, #ffffff);
+}
+
+body {
+  font-family: var(--tmv-font-sans);
+  /* No `overflow-x: hidden`. Clipping the page is how a 320px overflow becomes invisible to the
+     person testing at 320px; `09-testing.md` checks for real overflow, which a hidden scrollbar
+     would defeat. */
+  margin: 0;
+  color: var(--cds-text-primary, #161616);
+  background-color: var(--cds-background, #ffffff);
+}
+
+.tmv-sr-only,
+.cds--visually-hidden {
+  position: absolute;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  margin: -1px;
+  block-size: 1px;
+  clip: rect(0, 0, 0, 0);
+  inline-size: 1px;
+  white-space: nowrap;
+}
+
+.cds--skip-to-content:focus {
+  z-index: 10000;
+  display: block;
+  padding: 0.75rem 1rem;
+  border: 0;
+  block-size: auto;
+  background-color: var(--cds-background, #ffffff);
+  color: var(--cds-text-primary, #161616);
+  clip: auto;
+  inline-size: auto;
+  inset-block-start: 0.5rem;
+  inset-inline-start: 0.5rem;
+  outline: 2px solid var(--cds-focus, #0f62fe);
+}
+
+.tmv-noscript {
+  max-inline-size: 42rem;
+  padding: 4rem 1rem 2rem;
+  margin: 0 auto;
+}
+
+.tmv-noscript code {
+  font-family: var(--tmv-font-mono);
+  font-size: var(--tmv-text-xs);
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 4. Header                                                                                     */
+/* -------------------------------------------------------------------------------------------- */
+
+.tmv-header__name {
+  flex: 0 0 auto;
+}
+
+.tmv-header__prefix {
+  font-weight: 400;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.tmv-header__mark {
+  display: inline-block;
+  block-size: 1.25rem;
+  inline-size: 1.25rem;
+  margin-inline-end: 0.5rem;
+  background-color: var(--cds-interactive, #0f62fe);
+  clip-path: polygon(0 0, 100% 0, 100% 55%, 55% 100%, 0 100%);
+}
+
+/* Carbon's `__global` is `justify-content: flex-end` with a 1 1 flex basis; at 320px the name plus
+   five controls do not fit, so the name is allowed to disappear rather than to force the header
+   wider than the viewport. */
+.tmv-header__global {
+  gap: 0;
+  min-inline-size: 0;
+}
+
+@media (max-width: 41.98rem) {
+  .tmv-header__name {
+    padding-inline: 0.5rem;
+  }
+  .tmv-header__prefix {
+    display: none;
+  }
+}
+
+/* The indicator is a label, not a control, so it is sized to its text rather than to Carbon's 3rem
+   square. */
+.tmv-header__notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding-inline: 0.75rem;
+  max-inline-size: 14rem;
+  block-size: var(--tmv-header-h);
+  color: var(--cds-text-primary, #161616);
+  font-size: var(--tmv-text-xs);
+  line-height: 1.2;
+}
+
+.tmv-dirty {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding-inline: 0.75rem;
+  block-size: var(--tmv-header-h);
+  font-size: var(--tmv-text-xs);
+  white-space: nowrap;
+}
+
+.tmv-dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  block-size: 0.5rem;
+  inline-size: 0.5rem;
+}
+
+.tmv-dot--warning {
+  background-color: var(--cds-support-warning, #f1c21b);
+}
+
+.tmv-dot--attention {
+  background-color: var(--cds-support-caution-major, #ff832b);
+}
+
+#tmv-commit {
+  flex: 0 0 auto;
+  margin-inline: 0.5rem;
+}
+
+/* The light/dark switch. Carbon's `.cds--header__action` already supplies the 3rem square, the
+   transparent border that becomes the focus ring and the pressed states, so this only has to place
+   the two glyphs on top of one another and cross-fade between them.
+
+   Both glyphs are absolutely positioned and the button is `position: relative`, so the control keeps
+   the exact footprint of every other header action and nothing in the header reflows when the theme
+   changes. The fade is on `aria-checked` rather than on the theme class, because `aria-checked` is
+   the same fact the screen reader is given — one source, so the picture and the announcement cannot
+   disagree. */
+.tmv-theme-toggle {
+  position: relative;
+  align-items: center;
+  justify-content: center;
+}
+
+.tmv-theme-toggle__icon {
+  position: absolute;
+  transition: opacity 0.15s cubic-bezier(0.2, 0, 0.38, 0.9), rotate 0.25s cubic-bezier(0.2, 0, 0.38, 0.9);
+}
+
+.tmv-theme-toggle__icon--sun {
+  opacity: 1;
+  rotate: 0deg;
+}
+
+.tmv-theme-toggle__icon--moon {
+  opacity: 0;
+  rotate: -90deg;
+}
+
+.tmv-theme-toggle[aria-checked='true'] .tmv-theme-toggle__icon--sun {
+  opacity: 0;
+  rotate: 90deg;
+}
+
+.tmv-theme-toggle[aria-checked='true'] .tmv-theme-toggle__icon--moon {
+  opacity: 1;
+  rotate: 0deg;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tmv-theme-toggle__icon {
+    transition: none;
+  }
+}
+
+/* Below `sm` the header is the one place with genuinely no room: the name, the drawer trigger, the
+   model switcher, the storage indicator, the dirty flag, the commit badge and five controls compete
+   for 320px. The switcher is already capped at 8rem down there; the toggle is the newest arrival and
+   so it is the one that goes — the same choice is still one tap away in the theme menu beside it, in
+   Settings → Appearance, and it is persisted, so nobody loses their theme by not being able to reach
+   the switch. */
+@media (max-width: 41.98rem) {
+  .tmv-theme-toggle {
+    display: none;
+  }
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 5. Icons                                                                                      */
+/*                                                                                               */
+/* `12-widgets.js` draws an icon as an empty span with a class, because an inline `svg` written     */
+/* from JS would be a string of markup and this application does not build DOM from strings. The    */
+/* glyph is therefore a mask: the span paints `currentColor` through a shape supplied as a data      */
+/* URI, which is allowed because `build.mjs` sets `img-src data:`. Masks inherit colour, scale with  */
+/* `font-size` and need no per-icon markup.                                                        */
+/* -------------------------------------------------------------------------------------------- */
+
+.tmv-icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  block-size: 1rem;
+  inline-size: 1rem;
+  background-color: currentColor;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  vertical-align: middle;
+}
+
+.tmv-icon--chevron-down {
+  -webkit-mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="none" stroke="black" stroke-width="1.5" d="M3 6l5 5 5-5"/></svg>');
+  mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="none" stroke="black" stroke-width="1.5" d="M3 6l5 5 5-5"/></svg>');
+}
+
+.tmv-icon--chevron-left {
+  -webkit-mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="none" stroke="black" stroke-width="1.5" d="M10 3L5 8l5 5"/></svg>');
+  mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="none" stroke="black" stroke-width="1.5" d="M10 3L5 8l5 5"/></svg>');
+}
+
+.tmv-icon--chevron-right {
+  -webkit-mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="none" stroke="black" stroke-width="1.5" d="M6 3l5 5-5 5"/></svg>');
+  mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="none" stroke="black" stroke-width="1.5" d="M6 3l5 5-5 5"/></svg>');
+}
+
+.tmv-icon--check {
+  -webkit-mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="none" stroke="black" stroke-width="2" d="M3 8.5l3.5 3.5L13 4.5"/></svg>');
+  mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="none" stroke="black" stroke-width="2" d="M3 8.5l3.5 3.5L13 4.5"/></svg>');
+}
+
+.tmv-icon--close {
+  -webkit-mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="none" stroke="black" stroke-width="1.5" d="M4 4l8 8M12 4l-8 8"/></svg>');
+  mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="none" stroke="black" stroke-width="1.5" d="M4 4l8 8M12 4l-8 8"/></svg>');
+}
+
+.tmv-icon--copy {
+  -webkit-mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="none" stroke="black" stroke-width="1.25" d="M5.5 5.5V2.5h8v8h-3M2.5 5.5h8v8h-8z"/></svg>');
+  mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="none" stroke="black" stroke-width="1.25" d="M5.5 5.5V2.5h8v8h-3M2.5 5.5h8v8h-8z"/></svg>');
+}
+
+.tmv-icon--menu {
+  -webkit-mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="none" stroke="black" stroke-width="1.5" d="M2 4h12M2 8h12M2 12h12"/></svg>');
+  mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="none" stroke="black" stroke-width="1.5" d="M2 4h12M2 8h12M2 12h12"/></svg>');
+}
+
+/* The sort caret. Rotated rather than redrawn per direction, so the three states cannot disagree
+   about the shape and only the rotation differs. */
+.tmv-icon--sort {
+  -webkit-mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="black" d="M8 12L3.5 6h9z"/></svg>');
+  mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="black" d="M8 12L3.5 6h9z"/></svg>');
+}
+
+.tmv-sort--none {
+  opacity: 0.35;
+}
+
+.tmv-sort--asc {
+  opacity: 1;
+  rotate: 180deg;
+}
+
+.tmv-sort--desc {
+  opacity: 1;
+}
+
+.tmv-icon--overflow {
+  -webkit-mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="black"><circle cx="8" cy="3" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="8" cy="13" r="1.4"/></g></svg>');
+  mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="black"><circle cx="8" cy="3" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="8" cy="13" r="1.4"/></g></svg>');
+}
+
+/* The light/dark switch's two glyphs. Drawn as a mask like every other icon, so they take the
+   header action's own colour in each theme without a second rule per theme. */
+.tmv-icon--sun {
+  -webkit-mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="none" stroke="black" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="3.1"/><path d="M8 1.2v1.9M8 12.9v1.9M1.2 8h1.9M12.9 8h1.9M3.2 3.2l1.35 1.35M11.45 11.45l1.35 1.35M12.8 3.2l-1.35 1.35M4.55 11.45L3.2 12.8"/></g></svg>');
+  mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="none" stroke="black" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="3.1"/><path d="M8 1.2v1.9M8 12.9v1.9M1.2 8h1.9M12.9 8h1.9M3.2 3.2l1.35 1.35M11.45 11.45l1.35 1.35M12.8 3.2l-1.35 1.35M4.55 11.45L3.2 12.8"/></g></svg>');
+}
+
+.tmv-icon--moon {
+  -webkit-mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="black" d="M13.6 10.3A6.15 6.15 0 0 1 5.7 2.4a5.9 5.9 0 1 0 7.9 7.9z"/></svg>');
+  mask-image: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="black" d="M13.6 10.3A6.15 6.15 0 0 1 5.7 2.4a5.9 5.9 0 1 0 7.9 7.9z"/></svg>');
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 6. Tabs                                                                                       */
+/*                                                                                               */
+/* `#tmv-tabs` is the first child of `.tmv-shell`, and the shell clears the fixed header. Carbon      */
+/* sets `margin-block-start: 3rem` on `.cds--content` because in Carbon's own layout the tabs live     */
+/* inside the content; here the tabs are siblings of it, so the offset belongs to the shell and both   */
+/* Carbon margins on the content are cancelled. That is also why there is no special case for a        */
+/* failure screen, where the shell hides the tab strip: the content simply starts at the top of a      */
+/* shell that is already clear of the header.                                                          */
+/* -------------------------------------------------------------------------------------------- */
+
+.tmv-shell {
+  margin-block-start: var(--tmv-header-h);
+  min-inline-size: 0;
+}
+
+/* Carbon offsets `.cds--content` by 3rem on both axes, because in Carbon's layout the content sits
+   directly under a fixed header and directly beside a 3rem rail. The shell now carries both offsets
+   for every region, so leaving these would double the top offset and add 3rem to the left inside the
+   shell — visible as a content column that does not line up with its own tab strip. */
+.tmv-content {
+  margin-block-start: 0;
+  margin-inline-start: 0;
+}
+
+.tmv-tabs {
+  /* Carbon sets `margin-inline-start: -1rem` on `.cds--tabs`, which assumes the content's 2rem
+     padding. `#tmv-tabs` is not inside the content, so that negative margin would pull the strip off
+     the left edge of the shell. */
+  margin-inline-start: 0;
+  background-color: var(--cds-layer, #f4f4f4);
+}
+
+.tmv-tabs .cds--tab--list {
+  /* At `sm` the row scrolls horizontally (§7) rather than wrapping, which is Carbon's own
+     `overflow-x: auto` on this element; the explicit rule is here so the behaviour is not inherited
+     by accident from a class we do not own. */
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.tmv-tabs .cds--tabs__nav-item {
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 7. Side nav, and the one offset it drives                                                     */
+/*                                                                                               */
+/* The nav is `position: fixed` (Carbon), so it is out of flow and the shell beside it is offset by   */
+/* a rule that reads the nav's own state classes. It precedes the shell in `src/index.html` so that   */
+/* a general sibling combinator can reach every region it displaces — tab strip, banners and content  */
+/* — with one declaration each. A forward-only combinator cannot do that if the nav comes last, and   */
+/* the alternatives are duplicating the offset per region or reaching for `:has()`.                   */
+/* -------------------------------------------------------------------------------------------- */
+
+/* The rail and the expanded nav both have to be stated with two classes: Carbon's `--ux` rule zeroes
+   the width below 66rem, and `--collapsed` slides the nav off-canvas. Neither is what this layout
+   wants above `sm`, so both are overridden here rather than left to load order. */
+.tmv-side-nav.cds--side-nav--expanded {
+  inline-size: var(--tmv-nav-w);
+  max-inline-size: var(--tmv-nav-w);
+  transform: none;
+}
+
+.tmv-side-nav.cds--side-nav--expanded ~ .tmv-shell {
+  margin-inline-start: var(--tmv-nav-w);
+}
+
+@media (min-width: 42rem) {
+  .tmv-side-nav.cds--side-nav--collapsed {
+    /* §7: at `md` the nav collapses to the 3rem rail *by default*. Carbon's `--collapsed` is the
+       off-canvas state, and there is no trigger above `sm` to bring an off-canvas nav back, so
+       leaving it as Carbon defines it would strand the user with no navigation at all and no
+       control that says so. */
+    inline-size: var(--tmv-rail-w);
+    max-inline-size: var(--tmv-rail-w);
+    transform: none;
+  }
+
+  .tmv-side-nav.cds--side-nav--collapsed ~ .tmv-shell {
+    margin-inline-start: var(--tmv-rail-w);
+  }
+
+  /* The rail shows a monogram per row and no label. The label is not `display: none`d: it is the
+     button's accessible name, so it is clipped instead, which keeps it in the accessibility tree
+     where `display: none` would remove it and leave the rail reading as a column of unnamed buttons.
+     The monogram is decoration and carries `aria-hidden` from the widget. */
+  .tmv-side-nav.cds--side-nav--collapsed .cds--side-nav__link {
+    position: relative;
+    justify-content: center;
+    padding-inline: 0;
+    text-align: center;
+  }
+
+  .tmv-side-nav.cds--side-nav--collapsed .cds--side-nav__link-text,
+  .tmv-side-nav.cds--side-nav--collapsed .cds--side-nav__link-count {
+    position: absolute;
+    overflow: hidden;
+    block-size: 1px;
+    clip: rect(0, 0, 0, 0);
+    inline-size: 1px;
+    white-space: nowrap;
+  }
+
+  .tmv-side-nav.cds--side-nav--collapsed .tmv-side-nav__monogram {
+    display: block;
+  }
+
+  /* The unresolved-reference dot is placed with an auto inline-start margin, which on a centred row
+     would push it out of the rail rather than past the end of a label. The row is already marked by
+     its own colour and by the count in the expanded nav, and the warning is on the entity itself. */
+  .tmv-side-nav.cds--side-nav--collapsed .cds--side-nav__link[data-unresolved='true']::after {
+    display: none;
+  }
+}
+
+.tmv-side-nav {
+  padding-block-end: 0;
+}
+
+.tmv-side-nav .cds--side-nav__items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0.5rem 0 1rem;
+}
+
+/* ------------------------------------------------------------------------------------------------
+   The nav links are buttons, and the pinned stylesheet has no `.cds--side-nav__link` rule at all.
+
+   That is not an oversight on Carbon's part — its own markup puts an `<a>` there, which arrives with
+   `display: block`, no border and no background. Ours is a `<button>`, because every nav row performs
+   an action in this application rather than navigating to a URL, and a `<button>` arrives with the
+   user agent's chrome: a `2px outset` border, `1px 6px` padding and a shrink-to-fit box. Nothing
+   overrode it, so the nav was a column of grey beveled boxes of assorted widths — the single most
+   obviously unfinished screen in the build, and the one the classes-only checks could not see because
+   the class was right there.
+
+   So the reset is written out rather than inherited: appearance, border, background, padding, width
+   and alignment are all stated, and the two-class selector keeps them ahead of Carbon's
+   `__item:hover > span` colour rule without needing `!important`.
+   ------------------------------------------------------------------------------------------------ */
+
+.tmv-side-nav .cds--side-nav__link,
+.cds--side-nav__link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0.625rem 1rem;
+  border: 0;
+  border-inline-start: 2px solid transparent;
+  margin: 0;
+  background-color: transparent;
+  color: var(--cds-text-secondary, #525252);
+  cursor: pointer;
+  font-family: var(--tmv-font-sans);
+  font-size: var(--tmv-text-sm);
+  line-height: 1.35;
+  text-align: start;
+  text-decoration: none;
+  inline-size: 100%;
+  transition: background-color 0.11s cubic-bezier(0.2, 0, 0.38, 0.9), color 0.11s cubic-bezier(0.2, 0, 0.38, 0.9);
+}
+
+.tmv-side-nav .cds--side-nav__link:hover {
+  background-color: var(--cds-layer-hover, #e8e8e8);
+  color: var(--cds-text-primary, #161616);
+}
+
+.tmv-side-nav .cds--side-nav__link:focus-visible {
+  outline: 2px solid var(--cds-focus, #0f62fe);
+  outline-offset: -2px;
+}
+
+/* The current row is marked twice over: a bar on the leading edge and a weight change, on top of the
+   selected layer. Weight and edge are not decoration — they are what survives a reader who cannot
+   separate `--cds-layer-selected` from `--cds-layer` by contrast alone. */
+.tmv-side-nav .cds--side-nav__link--current,
+.tmv-side-nav .cds--side-nav__link[aria-current='true'] {
+  border-inline-start-color: var(--cds-interactive, #0f62fe);
+  background-color: var(--cds-layer-selected, #e0e0e0);
+  color: var(--cds-text-primary, #161616);
+  font-weight: 600;
+}
+
+.tmv-side-nav .cds--side-nav__link--current:hover,
+.tmv-side-nav .cds--side-nav__link[aria-current='true']:hover {
+  background-color: var(--cds-layer-selected-hover, #d1d1d1);
+}
+
+.tmv-side-nav .cds--side-nav__link-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Shown only in the 3rem rail, where there is no room for a label. See `monogram` in `17-shell.js`
+   for why a section is named by initials there rather than by an icon. */
+.tmv-side-nav__monogram {
+  display: none;
+  font-size: var(--tmv-text-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* §3's per-section finding count. Right-aligned and tabular, so a column of counts reads as a column
+   rather than as text of assorted widths. */
+.tmv-side-nav .cds--side-nav__link-count {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.tmv-side-nav .cds--side-nav__link-count--zero {
+  color: var(--cds-text-placeholder, #a8a8a8);
+}
+
+/* An unresolved reference is a warning on the entity, in the list and in the detail (REQ-VIEW-007),
+   so it is marked in the nav too rather than only inside the panel. */
+.cds--side-nav__link[data-unresolved='true']::after {
+  content: '';
+  display: inline-block;
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+  border-radius: 50%;
+  background-color: var(--cds-support-warning, #f1c21b);
+  block-size: 0.5rem;
+  inline-size: 0.5rem;
+}
+
+/* The `sm` overlay. §7: below `sm` the nav is not a column at all — it is a drawer over the content,
+   opened by the header trigger — so the shell must not be displaced by it and the drawer needs a way
+   to read as a layer rather than as the page having shifted. Carbon's own off-canvas `--collapsed`
+   transform is what does the closing, and this file only has to not fight it.
+
+   The offset has to be cancelled **by a selector that outranks the two above**, and that is what the
+   doubled state class is for. `.tmv-side-nav ~ .tmv-shell` does not win here: the rule two blocks up
+   that offsets `.tmv-side-nav.cds--side-nav--expanded ~ .tmv-shell` is one class more specific, so
+   at `sm` the drawer displaced the whole shell by its own 16rem width and the page scrolled sideways
+   at 320px — a defect that only shows at a width where the drawer is the default state of a nav that
+   is `.tmv-side-nav--expanded` on first load. Naming both states rather than reaching for
+   `!important` keeps the cancellation readable as "in the `sm` drawer, neither state offsets". */
+@media (max-width: 41.98rem) {
+  .tmv-side-nav.cds--side-nav--expanded {
+    box-shadow: 0 2px 6px var(--cds-shadow, rgba(0, 0, 0, 0.3));
+  }
+
+  .tmv-side-nav.cds--side-nav--expanded ~ .tmv-shell,
+  .tmv-side-nav.cds--side-nav--collapsed ~ .tmv-shell {
+    margin-inline-start: 0;
+  }
+}
+
+.tmv-sidenav-trigger {
+  display: none;
+}
+
+@media (max-width: 41.98rem) {
+  .tmv-sidenav-trigger {
+    display: inline-flex;
+  }
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 8. Banners and notifications                                                                  */
+/* -------------------------------------------------------------------------------------------- */
+
+/* The banners sit above the content and beside the same gutter, so they read as part of one column.
+   They take the fluid gutter from §11 rather than a second pair of fixed numbers that would have to
+   be kept equal to it at every width. */
+.tmv-banners {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-inline: var(--tmv-space-page);
+  margin-block-start: var(--tmv-space-block);
+}
+
+.tmv-banner {
+  margin: 0;
+}
+
+/* Toasts and the busy indicator float, because they are about something that just happened and must
+   not move the content under the reader's cursor. */
+.tmv-notifications {
+  position: fixed;
+  z-index: 9500;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-inline-size: min(24rem, calc(100vw - 2rem));
+  inset-block-end: 1rem;
+  inset-inline-end: 1rem;
+  pointer-events: none;
+}
+
+.tmv-notifications > * {
+  pointer-events: auto;
+}
+
+/* Carbon sizes a toast at a fixed 18rem, which is a third of a 1440px window and more than half of a
+   320px one — and the second case is the one that shows: the box was wider than the space between
+   the viewport edge and its own anchor, so it hung off the side. The container already caps itself
+   with `max-inline-size`, so the toast just has to fill whatever the container was allowed to be. */
+.tmv-notifications .cds--toast-notification {
+  inline-size: 100%;
+  max-inline-size: none;
+}
+
+.tmv-toast {
+  margin: 0;
+}
+
+.tmv-busy {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border: var(--tmv-border);
+  border-radius: var(--tmv-radius);
+  background-color: var(--cds-layer, #f4f4f4);
+  box-shadow: 0 2px 6px var(--cds-shadow, rgba(0, 0, 0, 0.3));
+  color: var(--cds-text-primary, #161616);
+  font-size: var(--tmv-text-sm);
+}
+
+.tmv-busy__spinner {
+  display: inline-block;
+  border: 2px solid var(--cds-border-strong, #8d8d8d);
+  border-radius: 50%;
+  animation: tmv-spin 0.8s linear infinite;
+  border-block-start-color: transparent;
+  block-size: 1rem;
+  inline-size: 1rem;
+}
+
+@keyframes tmv-spin {
+  to { rotate: 360deg; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tmv-busy__spinner { animation: none; }
+}
+
+.tmv-error-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--cds-support-error, #da1e28);
+  font-weight: 600;
+}
+
+.tmv-retained {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tmv-retained__entry {
+  padding: 0.75rem 1rem;
+  border: var(--tmv-border);
+  border-inline-start: 3px solid var(--cds-border-strong, #8d8d8d);
+  background-color: var(--cds-layer-01, #f4f4f4);
+}
+
+.tmv-retained__entry[data-level='error'] {
+  border-inline-start-color: var(--cds-support-error, #da1e28);
+}
+
+.tmv-retained__entry[data-level='warning'] {
+  border-inline-start-color: var(--cds-support-warning, #f1c21b);
+}
+
+.tmv-retained__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+}
+
+.tmv-retained__title {
+  font-weight: 600;
+}
+
+.tmv-retained__time {
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-retained__detail {
+  margin-block: 0.25rem 0;
+  font-size: var(--tmv-text-sm);
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 9. Layers, modals, menus                                                                      */
+/*                                                                                               */
+/* `#tmv-layers` gets no rule of its own, and that is on purpose: Carbon's modal is `visibility:    */
+/* hidden` and `.is-visible` sets `visibility: inherit`, so anything that hides or clips an ancestor */
+/* of the modal makes every dialog in the application invisible with nothing to see in the DOM.      */
+/* It stays a plain, unhidden, unclipped div.                                                       */
+/* -------------------------------------------------------------------------------------------- */
+
+.cds--modal-container {
+  border-radius: var(--tmv-radius);
+}
+
+/* Carbon v11 has no `--danger` modal variant — that class is v10, and the pinned stylesheet has no
+   rule for it. The widget still sets it, because a destructive confirmation being marked as one is
+   worth having; the marking is supplied here rather than left as a class that matched nothing. */
+.cds--modal--danger .cds--modal-container {
+  border-block-start: 3px solid var(--cds-support-error, #da1e28);
+}
+
+.cds--modal--danger .cds--modal-header__heading::before {
+  content: '';
+  display: inline-block;
+  margin-inline-end: 0.5rem;
+  background-color: var(--cds-support-error, #da1e28);
+  block-size: 0.75rem;
+  inline-size: 0.75rem;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.cds--modal-content {
+  font-family: var(--tmv-font-sans);
+}
+
+/* Carbon's overflow-menu options are positioned by the widget (it computes the anchor), so this only
+   has to make the list legible and scrollable when the trigger is near the bottom of the window. */
+.cds--overflow-menu-options {
+  max-block-size: 60vh;
+  overflow-y: auto;
+}
+
+.tmv-menu-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.tmv-menu__heading {
+  padding: 0.5rem 1rem;
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-menu__check {
+  margin-inline-start: auto;
+}
+
+#tmv-layers .tmv-modal-backdrop {
+  display: none;
+}
+
+body.tmv-scroll-locked {
+  overflow: hidden;
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 10. Model switcher                                                                            */
+/* -------------------------------------------------------------------------------------------- */
+
+.tmv-switcher-host {
+  display: flex;
+  align-items: center;
+  min-inline-size: 0;
+  max-inline-size: 22rem;
+}
+
+.tmv-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  /* Carbon sizes a header action at exactly 3rem square; the switcher is a name plus a caret. */
+  inline-size: auto;
+  max-inline-size: 100%;
+  padding-inline: 0.75rem;
+}
+
+.tmv-switcher--placeholder {
+  color: var(--cds-text-placeholder, #a8a8a8);
+}
+
+.tmv-switcher__name {
+  overflow: hidden;
+  max-inline-size: 14rem;
+  color: inherit;
+  font-size: var(--tmv-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tmv-switcher__caret {
+  transition: rotate 0.11s;
+}
+
+.tmv-switcher[aria-expanded='true'] .tmv-switcher__caret {
+  rotate: 180deg;
+}
+
+.tmv-switcher__menu {
+  min-inline-size: 16rem;
+  max-inline-size: 26rem;
+}
+
+.tmv-switcher__entry-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tmv-switcher__entry-meta,
+.tmv-model__description {
+  display: block;
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-model-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.tmv-header-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 11. Content: sections, headings, empties                                                      */
+/* -------------------------------------------------------------------------------------------- */
+
+/* The page gutter, stated here for every width rather than left to Carbon's flat 2rem plus the two
+   overrides the §7 breakpoints used to carry. One declaration that travels from 1rem at 320px to
+   3rem on a wide desktop replaces three fixed numbers that had to agree with each other, and it is
+   the single change that does most of the work of "scales with the size": the content column keeps
+   the same proportion of the window instead of growing only its text. */
+.tmv-content {
+  padding: var(--tmv-space-page);
+}
+
+/* The vertical rhythm between direct children of the content. Everything inside a view is a block
+   that follows another block, so one `* + *` rule here is what keeps twenty-six views evenly spaced
+   without twenty-six margin declarations. */
+.tmv-content > * + * {
+  margin-block-start: var(--tmv-space-block);
+}
+
+.tmv-content h1 {
+  margin: 0 0 0.5rem;
+  font-size: var(--tmv-text-xl);
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.tmv-content h2 {
+  margin: 0 0 0.5rem;
+  font-size: var(--tmv-text-lg);
+  font-weight: 400;
+  line-height: 1.3;
+  letter-spacing: -0.005em;
+}
+
+.tmv-intro,
+.tmv-view__title {
+  max-inline-size: 48rem;
+}
+
+.tmv-intro {
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-sm);
+  line-height: 1.6;
+}
+
+/* A section is separated by a rule, and the space above the rule is the space below the previous
+   section. It is fluid for the same reason the gutter is: at 320px a fixed 1rem padding plus the
+   rhythm margin was most of a line of white space between two short sections. */
+.tmv-section {
+  padding-block-start: var(--tmv-space-block);
+  border-block-start: var(--tmv-border);
+}
+
+.tmv-section--diagram {
+  border-block-start: 0;
+}
+
+.tmv-section__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.tmv-section__title {
+  margin: 0;
+}
+
+.tmv-section__note {
+  margin: 0.25rem 0 0;
+  max-inline-size: 48rem;
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-sm);
+  line-height: 1.5;
+}
+
+.tmv-subhead {
+  margin: 1.5rem 0 0.5rem;
+  font-size: var(--tmv-text-md);
+  font-weight: 600;
+}
+
+.tmv-note {
+  margin: 0.5rem 0;
+  max-inline-size: 48rem;
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-sm);
+  line-height: 1.5;
+}
+
+.tmv-note--warning {
+  padding-inline-start: 0.75rem;
+  border-inline-start: 3px solid var(--cds-support-warning, #f1c21b);
+  color: var(--cds-text-primary, #161616);
+}
+
+.tmv-muted {
+  color: var(--cds-text-placeholder, #a8a8a8);
+}
+
+.tmv-code {
+  display: block;
+  overflow-x: auto;
+  padding: 0.75rem 1rem;
+  border: var(--tmv-border);
+  margin: 0.5rem 0;
+  background-color: var(--cds-layer-01, #f4f4f4);
+  color: var(--cds-text-primary, #161616);
+  font-family: var(--tmv-font-mono);
+  font-size: var(--tmv-text-xs);
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.tmv-detail__key--bag,
+.tmv-code,
+.tmv-diff__value-text,
+.tmv-compare__pane-hash,
+.tmv-unresolved__id {
+  overflow-wrap: anywhere;
+}
+
+.tmv-empty {
+  padding: 2rem 1rem;
+  border: 1px dashed var(--cds-border-strong, #8d8d8d);
+  border-radius: var(--tmv-radius);
+  text-align: center;
+}
+
+.tmv-empty__title {
+  margin: 0 0 0.25rem;
+  font-size: var(--tmv-text-md);
+  font-weight: 600;
+}
+
+.tmv-empty__body {
+  max-inline-size: 36rem;
+  margin: 0 auto 0.75rem;
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-sm);
+}
+
+.tmv-empty__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.tmv-table__empty {
+  text-align: start;
+}
+
+.tmv-table__empty .tmv-empty {
+  text-align: start;
+}
+
+.tmv-link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cds-link-primary, #0f62fe);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.tmv-link-button:hover {
+  color: var(--cds-link-primary-hover, #0043ce);
+}
+
+.tmv-link-button:focus-visible {
+  outline: 2px solid var(--cds-focus, #0f62fe);
+  outline-offset: 2px;
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 12. Tables                                                                                    */
+/* -------------------------------------------------------------------------------------------- */
+
+.tmv-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* The table's own box: `.tmv-table__scroll` wraps the `table` and nothing else, added by `dataTable`
+   in `12-widgets.js`. It carries no styles of its own — a plain block that lays the table out exactly
+   as the flex column did — and exists only so the one band of widths that needs a scroller (the `md`
+   rule below) has something to put it on. `.tmv-table` cannot be the scroller: the toolbar and the
+   pagination are its other children, and they would slide sideways with the table. */
+
+
+/* Carbon's table toolbar is a fixed 3rem flex row, which is right for Carbon's own toolbar — icon
+   buttons and an unstyled search field, every one of them exactly the row height. This application
+   puts *labelled* controls in it: a search box, one select per filter, and the add and clear
+   buttons. A labelled select is taller than 3rem before its label is drawn, so the controls
+   overflowed the bar and landed on top of one another, and the row had no room to wrap them.
+
+   The bar therefore becomes an auto-height wrapping row. Three things about the rewrite are
+   load-bearing rather than stylistic:
+
+     · `position: relative` stays, because Carbon positions `.cds--batch-actions` absolutely against
+       this element. Dropping the containing block would strand the bulk-action bar at the top of the
+       page instead of over the toolbar it belongs to.
+     · `background-color` goes transparent, because the toolbar is not a Carbon toolbar any more and
+       a second layer band behind unrelated controls reads as a rendering fault.
+     · `align-items: flex-end`, because the controls are of three different heights (a search field, a
+       labelled select, a button) and bottom-aligning them is what makes the row look deliberate. */
+.tmv-table .cds--table-toolbar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  block-size: auto;
+  min-block-size: 0;
+  inline-size: 100%;
+  padding: 0;
+  margin-block-end: 0.75rem;
+  background-color: transparent;
+}
+
+/* Two rows that mean something: the controls, then the filters. The filter dropdowns are grouped
+   into one element by the widget — see `groupToolbar` in `12-widgets.js` for why — and that group is
+   given a full-line basis so it always starts a row of its own and never shares one with a button.
+   Splitting it into its own row by `order` instead would put the dropdowns last on screen while
+   leaving them second in the tab order, so the focus ring would drop to the bottom row and come back
+   up. */
+.tmv-table .cds--table-toolbar > * {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+}
+
+/* The select-all box belongs to the table rather than to the filters, so it is pushed to the far end
+   of its row instead of sitting wherever the last control happened to finish. */
+.tmv-table .cds--table-toolbar__select {
+  margin-inline-start: auto;
+}
+
+.tmv-toolbar__filters {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 1rem;
+}
+
+/* The search box is the one control that should absorb the spare width, and it is capped rather than
+   allowed to grow without limit: a 40rem search field on a 1600px screen is a text box pretending to
+   be a paragraph. */
+.tmv-table .cds--table-toolbar .cds--search {
+  flex: 1 1 14rem;
+  max-inline-size: 22rem;
+}
+
+/* The filter dropdowns. The basis belongs on the `.cds--form-item` that wraps the label and the
+   select, because that wrapper is the flex child of the group. They grow to fill the line and are
+   capped, so a two-filter list and a five-filter list both look deliberate rather than coming out as
+   one row of wide controls and one row of narrow ones. */
+.tmv-toolbar__filters .cds--form-item {
+  flex: 1 1 9rem;
+  max-inline-size: 16rem;
+  margin-block-end: 0;
+}
+
+.tmv-table .cds--table-toolbar .cds--btn {
+  flex: 0 0 auto;
+}
+
+/* Carbon's own select marker is an inline `svg` it writes into the markup, and this application
+   builds no DOM from strings, so the arrow is one of the mask icons instead. It takes Carbon's
+   placement — `.cds--select__arrow` is `inset-block-start: 0` with `block-size: 100%` — but not its
+   geometry: a mask has to be given a size of its own, and a full-height box would stretch the glyph
+   to the height of the field. So it is centred on the field and sized in `em`. */
+.tmv-select__arrow {
+  position: absolute;
+  color: var(--cds-icon-primary, #161616);
+  inset-block-start: 50%;
+  inset-inline-end: 1rem;
+  pointer-events: none;
+  translate: 0 -50%;
+}
+
+.tmv-table .cds--data-table {
+  inline-size: 100%;
+}
+
+/* A table's width is the sum of its columns' floors, and in a table laid out automatically a floor is
+   the widest thing in the column that cannot be broken — one commit message containing
+   `otm_EXAMPLE.json` was 158px of the log's 824px, and a date was another 106. Those floors are
+   content, not design: a threat model may hold any string at all. Left alone they make the table
+   wider than the box that contains it, and the surplus does not go anywhere sensible — the table
+   spills past the bordered block, past its own section, and on a 900px window past the page, which
+   is the horizontal scrollbar this application is not allowed to have.
+
+   `overflow-wrap: anywhere` is the correct tool here and `break-word` is not: only `anywhere`
+   reduces the column's *minimum* contribution, which is the number the layout is fighting over.
+   Breaking happens only where the space actually runs out — with the room the layout gives it, a
+   column shows its content in full and nothing breaks mid-word.
+
+   The same rule is deliberately not applied to `th`. A column heading is a word the application
+   chose, it is short, and "Messag/e" is not a heading anyone wants. Headers instead set a floor of
+   their own, which is what keeps the columns named at every width. */
+.tmv-table .cds--data-table td {
+  overflow-wrap: anywhere;
+}
+
+/* Carbon's buttons are `white-space: nowrap`. Inside a table cell that is a floor the cell cannot
+   shrink past, so the widest button in a column — the log's "Revert to this", 150px — sets the
+   column's minimum no matter how the surrounding cells behave. Letting the label wrap is only ever
+   seen when the table is at its narrowest. */
+.tmv-table .cds--data-table td .cds--btn {
+  white-space: normal;
+}
+
+/* Carbon's `--sticky-header` variant is not a table and is not sticky. It sets `display: block` on
+   the table and `display: flex` on `thead`, `tbody`, `tr` and every cell, so the browser stops
+   laying the rows out as columns at all: each header cell and each body cell is sized from its own
+   content, in its own row, and nothing lines up. On the Threats table the expand column came out
+   138px wide in the header and 108px in the row directly beneath it. The stickiness is no better —
+   the scroll container the class creates has no height limit, so the header never moves relative to
+   it and the behaviour the class is named for was not happening either.
+
+   So the application does not use that class: the table keeps Carbon's ordinary `.cds--data-table`,
+   which is a real table, and the sticky header is the rule below. Its offset is the app header's own
+   height, which is right whether or not the tab strip is still on screen above the table, because
+   the strip scrolls away and the app bar does not. The bottom edge is an inset shadow rather than a
+   border: in a collapsed-border table the shared border belongs to the table and stays behind when
+   the cell is stuck. */
+.tmv-table--sticky thead th {
+  position: sticky;
+  z-index: 2;
+  inset-block-start: var(--tmv-header-h);
+  box-shadow: inset 0 -1px 0 var(--cds-border-subtle, #c6c6c6);
+}
+
+.tmv-table .cds--data-table th[data-action='sort'] {
+  cursor: pointer;
+}
+
+.tmv-table .cds--data-table th[aria-sort='none'] .cds--table-sort__content {
+  font-weight: 400;
+}
+
+.tmv-td--numeric {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The two control columns — the expand chevron and the row checkbox — are given narrow padding and
+   no width of their own. A specified width in an auto-layout table is not a cap: the browser
+   resolves it first and then hands the column a share of the surplus on top, which is how the expand
+   column came out 597px of a 1096px table when it was the only column that had asked for anything.
+   Left to their contents, both columns settle at the width of the control inside them.
+ *
+ * The selectors are three-class chains on purpose. Carbon sizes its own cells with
+ * `.cds--data-table th` and `.cds--data-table td`, which outranks a lone `.tmv-th--expand`, and an
+ * earlier version of this rule lost to it silently, leaving Carbon's 1rem padding in place. */
+.tmv-table .cds--data-table .tmv-td--expand,
+.tmv-table .cds--data-table .tmv-th--expand,
+.tmv-table .cds--data-table .tmv-td--select,
+.tmv-table .cds--data-table .tmv-th--select {
+  padding-inline: 0.375rem;
+  white-space: nowrap;
+}
+
+/* Carbon's expand button is `inline-size: 100%`, a percentage on a descendant of a table cell that
+   puts the cell's width and the button's width in a cycle. The cell is sized from its content, so
+   the button has to name a width rather than inherit one. */
+.tmv-table .cds--data-table .cds--table-expand__button {
+  inline-size: 2rem;
+}
+
+/* Carbon draws the checkbox itself as the label's `:before`, placed against the label's own box
+   rather than against the cell, so the cell only has to give it room. The label's text is a
+   `cds--visually-hidden` span — it is the checkbox's accessible name, and the reason the box shows
+   at all is that the label carries Carbon's `cds--checkbox-label` class rather than being hidden
+   itself, which is the trap the row cells used to fall into: a clipped label draws no `:before`, so
+   the name was announced and nothing was on screen to click. That leaves the label as an empty
+   1.25rem of reserved inline-start padding, which is centred in the cell, with the box re-centred
+   inside it, because the padding it reserves sits on one side only. */
+.tmv-td--select .cds--checkbox-label {
+  inline-size: 1.25rem;
+  margin-inline: auto;
+  padding-inline-start: 0;
+}
+
+.tmv-td--select .cds--checkbox-label:before {
+  inset-inline-start: 50%;
+  margin-inline: 0;
+  translate: -50% 0;
+}
+
+.tmv-cell-name {
+  font-weight: 600;
+}
+
+.tmv-cell-note {
+  display: block;
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+/* A commit's two dates, stacked: the relative one is what a reader scans for and the absolute one is
+   what they quote. Side by side they were the widest cell in the log, and the width was paid for out
+   of every other column. The full pair is still on the element's `title`. */
+.tmv-when__abs {
+  display: block;
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-cell-tags,
+.tmv-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.tmv-list-row-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.tmv-row-detail {
+  padding: 1rem;
+  background-color: var(--cds-layer-01, #f4f4f4);
+}
+
+.tmv-sel-all-label {
+  display: inline-block;
+}
+
+/* ------------------------------------------------------------------------------------------------
+   Pagination.
+
+   Carbon's pagination is built from `.cds--pagination__left` and `__right` halves, each holding
+   `.cds--form-item` children and a `.cds--pagination__control-buttons` wrapper. This widget builds a
+   flatter tree — the item count, the page-size select and the two arrows are direct children — so
+   Carbon's `justify-content: space-between` spaced three mismatched items across the row, and the
+   arrow buttons, whose width Carbon only sets inside `__control-buttons`, collapsed to the width of
+   their own icons. The row read as "1 item" on the left and a two-line stack of chevrons on the
+   right.
+
+   Rather than restructure the widget to match a wrapper Carbon's own CSS would then re-lay-out, the
+   flat tree is laid out here: the count and the size select group on the left, and the arrows are
+   given the width and the border Carbon expects them to get from the wrapper it does not have.
+
+   The order is declared rather than inherited, because the widget's children are `text`, `select`,
+   `nav` in that order and the row it produced was three items spread edge to edge by the parent's
+   `justify-content: space-between` — the count hard left, the select centred, the arrows hard right,
+   which reads as three unrelated things rather than as one control. The arrows keep the auto margin
+   that pushes them right, and the two left-hand items sit next to each other.
+   ------------------------------------------------------------------------------------------------ */
+
+.tmv-list .cds--pagination {
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  min-block-size: 0;
+  padding-block: 0.5rem;
+  background-color: transparent;
+}
+
+.tmv-list .cds--pagination__text {
+  order: 1;
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+/* The width belongs on the wrapper, not on the `<select>` inside it. Carbon gives the wrapper
+   `display: flex; inline-size: 100%`, which is what a select in a form column wants and what a select
+   in a tool row must not have: at 100% it claimed the whole pagination row, wrapped the arrows onto a
+   line of their own, and carried the arrow glyph — which is positioned against the wrapper — out to
+   the far right edge of the table. `flex: 0 0 auto` keeps it sized to its own content. */
+.tmv-list .cds--pagination .cds--select-input__wrapper {
+  order: 2;
+  flex: 0 0 auto;
+  inline-size: auto;
+  min-inline-size: 10rem;
+}
+
+.tmv-list .cds--pagination .cds--select-input {
+  inline-size: 100%;
+  padding-inline: 0.75rem 2.5rem;
+}
+
+.tmv-list .cds--pagination__nav {
+  order: 3;
+  display: flex;
+  gap: 0.25rem;
+  margin-inline-start: auto;
+}
+
+.tmv-list .cds--pagination__button {
+  border: var(--tmv-border);
+  border-radius: var(--tmv-radius);
+  background-color: var(--cds-layer-01, #f4f4f4);
+  color: var(--cds-icon-primary, #161616);
+  inline-size: 2.5rem;
+}
+
+.tmv-list .cds--pagination__button:hover:not([disabled]) {
+  background-color: var(--cds-layer-hover, #e8e8e8);
+}
+
+.tmv-list .cds--pagination__button[disabled] {
+  color: var(--cds-text-disabled, rgba(22, 22, 22, 0.25));
+  cursor: not-allowed;
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 13. Detail panel, nested values, references                                                   */
+/* -------------------------------------------------------------------------------------------- */
+
+/* The structured list is the key/value grid the entity detail is built from. Carbon renders it as a
+   real `display: table`, which is what makes a label and its value share a line — and also why the
+   columns only line up when something gives the first one a width. Nothing did, so every row sized
+   its own two columns independently and each value started at a different x from the one above it.
+   Pinning the label column and taking the table out of its automatic layout is the whole fix.
+
+   The selectors are matched to Carbon's own specificity rather than left to source order, in the
+   same shape the top of this file describes: Carbon's rule for the first cell is a four-deep
+   descendant chain, so beating it takes a chain of the same length or longer — not `!important`. */
+.tmv-structured.cds--structured-list {
+  table-layout: fixed;
+}
+
+.tmv-structured.cds--structured-list .cds--structured-list-row .cds--structured-list-td,
+.tmv-structured.cds--structured-list .cds--structured-list-row .cds--structured-list-th {
+  padding: 0.5rem 0.75rem;
+  vertical-align: top;
+}
+
+/* The label column is a key, not a column of content: "Format version", "Working copy", "Head". At a
+   flat 32% it took 350px of the Overview to hold 14 characters and left the values stranded at the far
+   side of the table with a hand-span of white space between the two. A fixed 14rem is wide enough for
+   the longest key in the application and no wider, so the space a wide window adds goes to the values.
+ *
+ * A `clamp()` was tried here first and did nothing at all: `table-layout: fixed` resolves a column's
+ * width from the cell before the table's own width is known, and Chrome drops a cell width that mixes
+ * a percentage into a math function rather than resolving it. The cell then had no width, and the two
+ * columns split the table evenly — 350px each, which is the behaviour this rule exists to remove. */
+.tmv-structured.cds--structured-list .cds--structured-list-row .cds--structured-list-td:first-of-type,
+.tmv-structured.cds--structured-list .cds--structured-list-row .cds--structured-list-th:first-of-type {
+  padding-inline-start: 0.75rem;
+  inline-size: 14rem;
+}
+
+@media (max-width: 41.98rem) {
+  .tmv-structured.cds--structured-list .cds--structured-list-row .cds--structured-list-td:first-of-type,
+  .tmv-structured.cds--structured-list .cds--structured-list-row .cds--structured-list-th:first-of-type {
+    inline-size: 38%;
+  }
+}
+
+.tmv-detail {
+  display: grid;
+  grid-template-columns: minmax(8rem, 14rem) 1fr;
+  gap: 0.25rem 1rem;
+  padding: var(--tmv-space-card);
+  border-inline-start: 3px solid var(--cds-border-strong, #8d8d8d);
+  background-color: var(--cds-layer-01, #f4f4f4);
+}
+
+.tmv-detail__key {
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-sm);
+}
+
+.tmv-detail__key--bag {
+  font-family: var(--tmv-font-mono);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  grid-column: 1 / -1;
+  margin-block-start: 0.5rem;
+}
+
+.tmv-detail__related,
+.tmv-related {
+  grid-column: 1 / -1;
+  padding-block-start: 0.75rem;
+  border-block-start: var(--tmv-border);
+}
+
+.tmv-detail__related-title,
+.tmv-related__label {
+  margin: 0 0 0.25rem;
+  font-size: var(--tmv-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.tmv-related__group + .tmv-related__group {
+  margin-block-start: 0.75rem;
+}
+
+.tmv-related__state {
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-ref-list {
+  display: inline;
+}
+
+.tmv-nested {
+  grid-column: 1 / -1;
+  padding: 0.5rem 0.75rem;
+  border-inline-start: 2px solid var(--cds-border-subtle, #e0e0e0);
+  margin: 0.25rem 0;
+}
+
+.tmv-nested__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  margin: 0;
+  font-size: var(--tmv-text-sm);
+}
+
+.tmv-nested__key {
+  color: var(--cds-text-secondary, #525252);
+}
+
+.tmv-object,
+.tmv-object-row {
+  font-family: var(--tmv-font-mono);
+  font-size: var(--tmv-text-xs);
+}
+
+/* An unresolved reference is named where it appears, in the list and in the detail (REQ-VIEW-007) —
+   never an empty cell and never a silent omission. */
+.tmv-unresolved {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: baseline;
+  color: var(--cds-text-primary, #161616);
+}
+
+.tmv-unresolved__mark {
+  color: var(--cds-support-warning, #f1c21b);
+}
+
+.tmv-unresolved__id {
+  font-family: var(--tmv-font-mono);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-derived,
+.tmv-form__derived,
+.tmv-derived__note,
+.tmv-diff__derived-note {
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-derived__value {
+  font-weight: 600;
+}
+
+.tmv-provenance__root {
+  font-family: var(--tmv-font-mono);
+  font-size: var(--tmv-text-xs);
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 14. Forms and dialogs                                                                         */
+/* -------------------------------------------------------------------------------------------- */
+
+.tmv-form-wrap {
+  max-inline-size: 48rem;
+}
+
+.tmv-form__title {
+  margin: 0 0 0.5rem;
+}
+
+.tmv-form__fields {
+  display: grid;
+  grid-template-columns: minmax(10rem, 14rem) 1fr;
+  gap: 0.75rem 1rem;
+  align-items: start;
+}
+
+.tmv-field,
+.tmv-form__id {
+  display: contents;
+}
+
+.tmv-field--group,
+.tmv-field--object,
+.tmv-field--ref,
+.tmv-field--derived {
+  /* A field whose control is a group of controls still occupies one row of the label/control grid. */
+  grid-column: 1 / -1;
+}
+
+.tmv-form__note,
+.tmv-form__id-note,
+.tmv-bulk-field-label {
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-form__id-value {
+  font-family: var(--tmv-font-mono);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-form__problems,
+.tmv-form__problem-list {
+  padding-inline-start: 1.25rem;
+  color: var(--cds-support-error, #da1e28);
+}
+
+.tmv-field__wrapper,
+.tmv-field__control {
+  min-inline-size: 0;
+}
+
+.tmv-choice-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tmv-choice {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.tmv-choice__note {
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-check-group,
+.tmv-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tmv-check {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.tmv-check--disabled {
+  opacity: 0.6;
+}
+
+.tmv-list-editor,
+.tmv-list-editor__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tmv-list-editor__body {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.tmv-bulk,
+.tmv-bulk-field {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.tmv-dialog__lead {
+  max-inline-size: 42rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.tmv-dialog__note {
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-sm);
+}
+
+.tmv-dialog__list {
+  padding-inline-start: 1.25rem;
+  margin-block: 0.5rem;
+  max-block-size: 16rem;
+  overflow-y: auto;
+}
+
+.tmv-dialog__group + .tmv-dialog__group {
+  margin-block-start: 1rem;
+}
+
+.tmv-dialog__value,
+.tmv-dialog__value-host {
+  font-family: var(--tmv-font-mono);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-delete-references {
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-sm);
+}
+
+.tmv-file__progress {
+  margin-block-start: 0.5rem;
+}
+
+.tmv-import-file {
+  font-family: var(--tmv-font-mono);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-drop-target {
+  outline: 2px dashed var(--cds-focus, #0f62fe);
+  outline-offset: -2px;
+}
+
+/* --- the drop zone ------------------------------------------------------------------------- */
+
+/* Carbon's drop container is a `space-between` flex row: the prompt on the left, the hint pressed
+   against the right edge, both wrapping where they meet. It is built for a one-line prompt with a
+   one-line limit beside it ("Max file size 500MB"), and this application's hint is a sentence — two
+   ragged blocks of text abutting in the middle of a box. Stacking them reads as a title with its
+   explanation under it, which is what they are. */
+.cds--file .cds--file__drop-container {
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.25rem;
+  block-size: auto;
+  min-block-size: 6rem;
+}
+
+.cds--file .cds--file__drop-container-text {
+  font-weight: 600;
+}
+
+.cds--file .cds--file__drop-container-hint {
+  max-inline-size: 40rem;
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+/* --- progress steps ------------------------------------------------------------------------ */
+
+/* Carbon's progress indicator assumes each step carries a marker `svg`, and positions the optional
+   detail line absolutely inside the 8rem step. This application's steps have no marker — three stages
+   of an import are a checklist, not a wizard — so the label was the first thing in each step and the
+   detail line, absolutely positioned and shrink-to-fit at 88px, ran down past the step and through
+   whatever followed it. On the import screen that was the report table: the detail text printed
+   vertically across it, and the third step ran off the right of the page at every width below about
+   700px.
+
+   So the step is laid out here instead: a marker drawn in CSS from the step's own `data-state`, the
+   label beside it, the detail line under the label, and the steps wrapping as units when they run out
+   of room. */
+.tmv-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  padding: 0;
+  margin: 0.25rem 0 0.5rem;
+  list-style: none;
+}
+
+.tmv-progress .cds--progress-step {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.5rem;
+  flex: 1 1 12rem;
+  inline-size: auto;
+  min-inline-size: 0;
+}
+
+.tmv-progress .cds--progress-step::before {
+  content: '';
+  grid-row: 1 / -1;
+  inline-size: 0.75rem;
+  block-size: 0.75rem;
+  border: 1px solid var(--cds-border-strong, #8d8d8d);
+  border-radius: 50%;
+  margin-block-start: 0.3125rem;
+}
+
+.tmv-progress .cds--progress-step[data-state='complete']::before {
+  border-color: var(--cds-support-success, #24a148);
+  background-color: var(--cds-support-success, #24a148);
+}
+
+.tmv-progress .cds--progress-step[data-state='current']::before {
+  border-color: var(--cds-interactive, #0f62fe);
+  background-color: var(--cds-interactive, #0f62fe);
+  box-shadow: inset 0 0 0 2px var(--cds-layer, #fff);
+}
+
+.tmv-progress .cds--progress-label {
+  grid-column: 2;
+  margin: 0;
+  overflow: visible;
+  max-inline-size: none;
+  white-space: normal;
+  text-overflow: clip;
+}
+
+.tmv-progress .cds--progress-optional {
+  position: static;
+  grid-column: 2;
+  margin: 0.125rem 0 0;
+  inline-size: auto;
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-snippet__text {
+  font-family: var(--tmv-font-mono);
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 15. Full-screen states                                                                        */
+/*                                                                                               */
+/* The four states of `07-ui.md` §6 that stop the application. The chrome is hidden by the shell    */
+/* and this screen carries everything, so it must be readable without any of it.                    */
+/* -------------------------------------------------------------------------------------------- */
+
+.tmv-screen {
+  max-inline-size: 48rem;
+  padding-block-start: 1rem;
+}
+
+.tmv-screen--danger {
+  border-block-start: 3px solid var(--cds-support-error, #da1e28);
+  padding-block-start: 1.5rem;
+}
+
+.tmv-screen__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-block-end: 1rem;
+}
+
+.tmv-screen__lead {
+  margin: 0;
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-md);
+  line-height: 1.5;
+}
+
+.tmv-screen__detail {
+  margin: 0;
+  font-family: var(--tmv-font-mono);
+  font-size: var(--tmv-text-xs);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.tmv-screen__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.tmv-verdict {
+  display: inline-flex;
+  gap: 0.375rem;
+  align-items: center;
+  font-weight: 600;
+}
+
+.tmv-verdict--error {
+  color: var(--cds-support-error, #da1e28);
+}
+
+.tmv-app-hash,
+.tmv-app-version,
+.tmv-build-time {
+  font-family: var(--tmv-font-mono);
+  font-size: var(--tmv-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.tmv-identity-name,
+.tmv-identity-email {
+  font-weight: 600;
+}
+
+.tmv-extension-domain {
+  font-family: var(--tmv-font-mono);
+  font-size: var(--tmv-text-xs);
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 16. Compare and diff                                                                          */
+/* -------------------------------------------------------------------------------------------- */
+
+.tmv-compare,
+.tmv-compare-host {
+  display: block;
+}
+
+.tmv-compare__header {
+  margin-block-end: 1rem;
+}
+
+.tmv-compare__title {
+  margin: 0 0 0.5rem;
+}
+
+.tmv-compare__lead,
+.tmv-compare__problem-lead {
+  max-inline-size: 48rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.tmv-compare__panes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-block: 1rem;
+}
+
+.tmv-compare__pane {
+  padding: 0.75rem 1rem;
+  border: var(--tmv-border);
+  border-block-start: 3px solid var(--cds-border-strong, #8d8d8d);
+  background-color: var(--cds-layer-01, #f4f4f4);
+}
+
+.tmv-compare__pane[data-side='base'] {
+  border-block-start-color: var(--cds-support-info, #0043ce);
+}
+
+.tmv-compare__pane[data-side='a'] {
+  border-block-start-color: var(--cds-support-success, #24a148);
+}
+
+.tmv-compare__pane[data-side='b'] {
+  border-block-start-color: var(--cds-support-caution-major, #ff832b);
+}
+
+.tmv-compare__pane-name {
+  margin: 0;
+  font-size: var(--tmv-text-md);
+}
+
+.tmv-compare__pane-role,
+.tmv-compare__pane-commit,
+.tmv-compare__pane-hash {
+  margin: 0.125rem 0;
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-compare__panes + .tmv-compare__approximate,
+.tmv-compare__approximate {
+  max-inline-size: 48rem;
+  padding: 0.5rem 0.75rem;
+  border-inline-start: 3px solid var(--cds-support-warning, #f1c21b);
+  color: var(--cds-text-primary, #161616);
+  font-size: var(--tmv-text-sm);
+}
+
+.tmv-compare__toolbar,
+.tmv-compare__counts,
+.tmv-compare__actions,
+.tmv-compare__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  margin-block: 0.75rem;
+}
+
+.tmv-compare__progress {
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-sm);
+}
+
+.tmv-compare__groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.tmv-compare__problem-box {
+  padding: 0.75rem 1rem;
+  border-inline-start: 3px solid var(--cds-support-error, #da1e28);
+  background-color: var(--cds-layer-01, #f4f4f4);
+}
+
+.tmv-compare__problem + .tmv-compare__problem {
+  margin-block-start: 0.5rem;
+}
+
+.tmv-compare--refused .tmv-compare__header {
+  border-inline-start: 3px solid var(--cds-support-error, #da1e28);
+  padding-inline-start: 1rem;
+}
+
+.tmv-diff {
+  border: var(--tmv-border);
+  border-radius: var(--tmv-radius);
+}
+
+.tmv-diff__title {
+  padding: 0.5rem 1rem;
+  border-block-end: var(--tmv-border);
+  background-color: var(--cds-layer-01, #f4f4f4);
+  font-size: var(--tmv-text-md);
+}
+
+.tmv-diff__name {
+  font-family: var(--tmv-font-mono);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-diff__fields {
+  display: flex;
+  flex-direction: column;
+}
+
+.tmv-diff__field {
+  display: grid;
+  grid-template-columns: minmax(8rem, 12rem) 1fr;
+  gap: 0.25rem 1rem;
+  padding: 0.75rem 1rem;
+  border-block-start: var(--tmv-border);
+}
+
+.tmv-diff__field--conflict {
+  border-inline-start: 3px solid var(--cds-support-error, #da1e28);
+  background-color: var(--cds-layer-01, #f4f4f4);
+}
+
+.tmv-diff__field--removal {
+  border-inline-start: 3px solid var(--cds-support-warning, #f1c21b);
+}
+
+.tmv-diff__values {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  grid-column: 2;
+}
+
+.tmv-diff__value {
+  display: grid;
+  grid-template-columns: minmax(6rem, 10rem) 1fr;
+  gap: 0.25rem 0.75rem;
+  align-items: baseline;
+}
+
+.tmv-diff__value-label {
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-diff__value-text {
+  font-family: var(--tmv-font-mono);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-diff__suggested {
+  color: var(--cds-support-success, #24a148);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-diff__agreed,
+.tmv-diff__note,
+.tmv-diff__warning,
+.tmv-diff__derived {
+  grid-column: 1 / -1;
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-diff__warning {
+  color: var(--cds-text-primary, #161616);
+  border-inline-start: 3px solid var(--cds-support-warning, #f1c21b);
+  padding-inline-start: 0.5rem;
+}
+
+.tmv-diff__legend,
+.tmv-diff__bulk,
+.tmv-diff__derived-label,
+.tmv-diff__value {
+  margin-block: 0.25rem;
+}
+
+.tmv-diff__bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.75rem 1rem;
+}
+
+.tmv-merge-ack {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.75rem 1rem;
+  border-inline-start: 3px solid var(--cds-support-info, #0043ce);
+  background-color: var(--cds-layer-01, #f4f4f4);
+}
+
+.tmv-commit-detail {
+  display: grid;
+  grid-template-columns: minmax(8rem, 12rem) 1fr;
+  gap: 0.25rem 1rem;
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 17. Risk matrix, bands, meters, readiness                                                     */
+/* -------------------------------------------------------------------------------------------- */
+
+.tmv-matrix-wrap {
+  overflow-x: auto;
+  max-inline-size: 100%;
+}
+
+.tmv-matrix {
+  inline-size: auto;
+  min-inline-size: 32rem;
+  border-collapse: collapse;
+}
+
+.tmv-matrix__corner,
+.tmv-matrix__col,
+.tmv-matrix__row {
+  padding: 0.5rem;
+  font-size: var(--tmv-text-xs);
+  font-weight: 600;
+  text-align: start;
+  vertical-align: bottom;
+}
+
+.tmv-matrix__col {
+  text-align: center;
+}
+
+.tmv-matrix__cell {
+  padding: 0.5rem;
+  border: 1px solid var(--cds-border-subtle, #e0e0e0);
+  text-align: start;
+  vertical-align: top;
+}
+
+/* The level's colour, and never its only carrier: the cell also holds the score and the count, and
+   the table's header row and column say which likelihood and impact produced it.
+
+   The text colour is set here rather than inherited, and that is not decoration. The band colours are
+   fixed — a heat map that changed colour with the theme would be a different heat map — but the
+   themed text colour is not: on `cds--g90` and `cds--g100` it is near-white, which on these light
+   bands leaves a cell whose text cannot be read at all. So each band carries its own text colour,
+   chosen against the band. */
+.tmv-band--very_low { background-color: var(--tmv-band-very-low); color: #161616; }
+.tmv-band--low { background-color: var(--tmv-band-low); color: #161616; }
+.tmv-band--medium { background-color: var(--tmv-band-medium); color: #161616; }
+.tmv-band--high { background-color: var(--tmv-band-high); color: #161616; }
+.tmv-band--very_high { background-color: var(--tmv-band-very-high); color: #ffffff; }
+.tmv-band--critical { background-color: var(--tmv-band-critical); color: #ffffff; }
+
+/* The legend swatch is a colour chip with no text in it, so it takes no colour of its own; the list
+   item beside it is the label and keeps the themed text colour. */
+.tmv-matrix__swatch.tmv-band--very_low,
+.tmv-matrix__swatch.tmv-band--low,
+.tmv-matrix__swatch.tmv-band--medium,
+.tmv-matrix__swatch.tmv-band--high,
+.tmv-matrix__swatch.tmv-band--very_high,
+.tmv-matrix__swatch.tmv-band--critical {
+  color: inherit;
+}
+
+.tmv-matrix__cell--empty {
+  background-color: transparent;
+}
+
+.tmv-matrix__count {
+  display: block;
+  font-size: var(--tmv-text-md);
+  font-weight: 600;
+}
+
+.tmv-matrix__score {
+  display: block;
+  opacity: 0.75;
+  font-size: var(--tmv-text-2xs);
+}
+
+.tmv-matrix__legend {
+  margin-block-start: 1rem;
+}
+
+.tmv-matrix__legend-title {
+  margin: 0 0 0.5rem;
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-sm);
+}
+
+.tmv-matrix__legend-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.tmv-matrix__legend-item {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: var(--tmv-text-sm);
+}
+
+.tmv-matrix__swatch {
+  display: inline-block;
+  border: 1px solid var(--cds-border-subtle, #e0e0e0);
+  block-size: 1rem;
+  inline-size: 1rem;
+}
+
+.tmv-meter {
+  overflow: hidden;
+  max-inline-size: 32rem;
+  border: var(--tmv-border);
+  border-radius: var(--tmv-radius);
+  background-color: var(--cds-layer-01, #f4f4f4);
+  block-size: 0.75rem;
+}
+
+/* The width is a band, not the ratio: `style-src` is a hash with no `'unsafe-inline'`, so a width
+   cannot be written onto the element. The exact figure is in the percentage text above the bar and in
+   the `aria-label`, both of which the view renders — the bar is the visual duplicate, and §9's rule
+   is that it must not be the only carrier. */
+.tmv-meter__fill {
+  block-size: 100%;
+  inline-size: 25%;
+}
+
+.tmv-meter--normal .tmv-meter__fill { inline-size: 25%; background-color: var(--cds-support-success, #24a148); }
+.tmv-meter--elevated .tmv-meter__fill { inline-size: 75%; background-color: var(--cds-support-info, #0043ce); }
+.tmv-meter--warning .tmv-meter__fill { inline-size: 90%; background-color: var(--cds-support-warning, #f1c21b); }
+.tmv-meter--exhausted .tmv-meter__fill { inline-size: 100%; background-color: var(--cds-support-error, #da1e28); }
+
+.tmv-readiness {
+  padding: 0.75rem 1rem;
+  border: var(--tmv-border);
+  border-inline-start: 3px solid var(--cds-border-strong, #8d8d8d);
+  margin-block-end: 0.75rem;
+  background-color: var(--cds-layer-01, #f4f4f4);
+}
+
+.tmv-readiness--success { border-inline-start-color: var(--cds-support-success, #24a148); }
+.tmv-readiness--warning { border-inline-start-color: var(--cds-support-warning, #f1c21b); }
+.tmv-readiness--error { border-inline-start-color: var(--cds-support-error, #da1e28); }
+
+.tmv-readiness__title {
+  margin: 0 0 0.25rem;
+  font-size: var(--tmv-text-md);
+}
+
+.tmv-readiness__summary {
+  margin: 0;
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-sm);
+}
+
+.tmv-readiness__where {
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-summary,
+.tmv-summary-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.tmv-summary-counts {
+  padding: 0;
+  margin: 0.5rem 0;
+  list-style: none;
+}
+
+.tmv-count {
+  display: inline-flex;
+  gap: 0.375rem;
+  align-items: baseline;
+}
+
+.tmv-count--zero {
+  color: var(--cds-text-placeholder, #a8a8a8);
+}
+
+.tmv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.tmv-list__count {
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-unassigned {
+  color: var(--cds-text-placeholder, #a8a8a8);
+}
+
+.tmv-overview {
+  display: block;
+}
+
+.tmv-model__description {
+  max-inline-size: 48rem;
+  margin-block: 0.25rem 0.75rem;
+  font-size: var(--tmv-text-sm);
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 18. Diagrams                                                                                  */
+/*                                                                                               */
+/* Every paint comes from here: `14-diagrams.js` builds the SVG with positions and classes only, so  */
+/* there is no colour or stroke width in the markup for the CSS to argue with.                       */
+/* -------------------------------------------------------------------------------------------- */
+
+.tmv-diagram {
+  display: block;
+}
+
+.tmv-diagram__figure,
+.tmv-diagram__canvas {
+  overflow: auto;
+  max-inline-size: 100%;
+  padding: 0.5rem;
+  border: var(--tmv-border);
+  border-radius: var(--tmv-radius);
+  background-color: var(--cds-layer-01, #f4f4f4);
+}
+
+.tmv-diagram__svg {
+  display: block;
+  max-inline-size: 100%;
+  block-size: auto;
+  font-family: var(--tmv-font-sans);
+}
+
+.tmv-diagram__zone-box {
+  fill: var(--cds-layer, #f4f4f4);
+  stroke: var(--cds-border-subtle, #e0e0e0);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.tmv-diagram__zone-label {
+  fill: var(--cds-text-secondary, #525252);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tmv-diagram__node-box {
+  fill: var(--cds-layer-01, #f4f4f4);
+  stroke: var(--cds-border-strong, #8d8d8d);
+  stroke-width: 1;
+}
+
+[data-node-kind='actor'] .tmv-diagram__node-box { fill: var(--cds-layer-accent-01, #e0e0e0); }
+[data-node-kind='datastore'] .tmv-diagram__node-box,
+[data-node-kind='dataStore'] .tmv-diagram__node-box { fill: var(--cds-tag-background-blue, #d0e2ff); }
+[data-node-kind='process'] .tmv-diagram__node-box,
+[data-node-kind='component'] .tmv-diagram__node-box { fill: var(--cds-tag-background-green, #a7f0ba); }
+
+.tmv-diagram__node-label {
+  fill: var(--cds-text-primary, #161616);
+  font-size: 12px;
+}
+
+.tmv-diagram__edge {
+  stroke: var(--cds-border-strong, #8d8d8d);
+  stroke-width: 1.5;
+}
+
+.tmv-diagram__edge--encrypted {
+  stroke: var(--cds-support-success, #24a148);
+}
+
+.tmv-diagram__edge-label {
+  fill: var(--cds-text-primary, #161616);
+  stroke: var(--cds-layer-01, #f4f4f4);
+  stroke-width: 3;
+  font-size: 10px;
+}
+
+.tmv-diagram__arrow {
+  fill: var(--cds-border-strong, #8d8d8d);
+}
+
+.tmv-diagram__note {
+  max-inline-size: 48rem;
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-sm);
+}
+
+.tmv-diagram__note--empty {
+  color: var(--cds-text-placeholder, #a8a8a8);
+}
+
+.tmv-diagram__caption,
+.tmv-diagram__mermaid-version {
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+.tmv-diagram__picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin-block-end: 0.5rem;
+}
+
+.tmv-diagram__host {
+  max-inline-size: 100%;
+}
+
+.tmv-diagram__host svg {
+  max-inline-size: 100%;
+  block-size: auto;
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 19. Settings, checks, tooltips                                                                */
+/* -------------------------------------------------------------------------------------------- */
+
+.tmv-settings__block {
+  max-inline-size: 48rem;
+  padding: 0.75rem 1rem;
+  border: var(--tmv-border);
+  margin-block-end: 0.75rem;
+  background-color: var(--cds-layer-01, #f4f4f4);
+}
+
+/* The 48rem cap is a reading measure — it is about how far the eye travels along a line of prose, and
+   it is why the notes in these blocks stop where they do. It is the wrong measure for a table, which
+   is read across columns at once and is sized by its content rather than by its line length. The log
+   needs 824px of column floors and was given 734, so it spilled past the block's border and took the
+   page's scrollbar with it. Blocks that hold a table drop the cap. */
+.tmv-settings__block--wide {
+  max-inline-size: none;
+}
+
+.tmv-settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block: 0.5rem;
+}
+
+/* The Open/Delete pair in the Storage table's Actions column, and the name-plus-tag in its Model
+   column. Both are inline rows of two items and neither wants the margin above: a table cell sizes
+   itself to its content, and `margin-block` on the wrapper would sit the buttons off the row's
+   baseline in a cell that is otherwise vertically centred. */
+.tmv-stored-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.tmv-stored-model {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tmv-choice-note {
+  color: var(--cds-text-secondary, #525252);
+  font-size: var(--tmv-text-xs);
+}
+
+/* Carbon's content switcher is built for short labels. It is one flex row of fixed height whose
+   buttons share the width equally and clip whatever does not fit, because `.cds--content-switcher__label`
+   is `white-space: nowrap` with `text-overflow: ellipsis` and the button is `overflow: hidden`, which
+   gives it an automatic minimum size of zero and lets it shrink past its own text.
+
+   Ours are not short, and the label that matters most is the longest. Settings → Export offers four
+   formats, and "Native container (model and history)" is 234px of text at 14px inside a quarter of a
+   700px block. Carbon drew that row as "Standalone appl…", "Native container (m…", "Open Threat
+   Model" and "OWASP Threat Model L…" — at 1440px exactly as at 320px, on the one control whose whole
+   job is to say which format is which. The theme switcher fails the same way below 390px, where
+   "Gray 10" and "Gray 90" both become "Gray …" and the third dark theme cannot be told from the
+   second.
+
+   So the switcher wraps instead of clipping. The container wraps and drops its fixed height, each
+   button takes its own text as its base width and grows to fill whatever row it lands on, and the
+   label is allowed onto a second line. A row that fits is unchanged — the theme switcher on a desktop
+   still reads exactly as Carbon drew it — and a row that does not fit takes two lines rather than
+   losing a word. `flex-grow: 1` is what keeps the wrapped result looking deliberate: without it, a
+   row holding one long label would be a narrow button with a ragged edge above a full-width row.
+
+   The `:not(...)` selector is copied from the Carbon rule being overridden, so the two have equal
+   specificity and this file, which is later, wins — and `align-items: center` and the inline padding
+   Carbon sets alongside `inline-size: 100%` are deliberately left alone. */
+.cds--content-switcher {
+  flex-wrap: wrap;
+  block-size: auto;
+}
+
+.cds--content-switcher:not(.cds--content-switcher--icon-only) .cds--content-switcher-btn {
+  flex: 1 1 auto;
+  inline-size: auto;
+  white-space: normal;
+}
+
+.cds--content-switcher__label {
+  overflow: visible;
+  max-inline-size: none;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.tmv-tip {
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: help;
+}
+
+.tmv-scroll-locked {
+  overflow: hidden;
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 20. Responsive (07-ui.md §7)                                                                  */
+/*                                                                                               */
+/* The breakpoints are Carbon's, read from the pinned stylesheet so this file and Carbon agree:     */
+/* `sm` below 42rem, `md` from 42rem, `lg` from 66rem, `xlg` 82rem, `max` 99rem. The `lg`+ layout is */
+/* the default above, since Carbon's content offsets and full-width tables are already right there. */
+/* -------------------------------------------------------------------------------------------- */
+
+/* `md` — the rail, and tables one step tighter. The nav width is set in §7 above, and the content
+   gutter is not restated here at all: it is fluid in §11, so this breakpoint only carries the
+   decisions that are genuinely per-breakpoint — how many panes fit, and how wide the label column of
+   a two-column grid may be. */
+@media (min-width: 42rem) and (max-width: 65.98rem) {
+  .tmv-compare__panes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .tmv-detail,
+  .tmv-form__fields,
+  .tmv-commit-detail {
+    grid-template-columns: minmax(7rem, 11rem) 1fr;
+  }
+
+  /* Tables one step tighter, as this breakpoint has always said it would. Between `sm` and `lg` the
+     window is too narrow to give a nine-column table its natural width and too wide to stack the row
+     as cards, so the padding is what gives. Halving the cell padding returns 16px per column — 144px
+     across the log — which is the difference between the table fitting its block and overflowing the
+     page at 900px. The heading keeps enough padding to stay off the sort arrow. */
+  .tmv-table .cds--data-table th,
+  .tmv-table .cds--data-table td {
+    padding-inline: 0.5rem;
+  }
+}
+
+/* Below the width that gives the widest table its natural width, and above the width that stacks a row
+   as cards, there is one band where neither answer is available: the log's nine columns need about
+   680px and the block has less than that once the 3rem rail, the page gutter and the block's own
+   padding are taken out. At 832px the block is 686 and the table fits; at 672 it is 542 and the table
+   overruns the page by 96px, which is the horizontal page scrollbar REQ-UI-006 AC2 is about.
+
+   So the table scrolls inside its own box across that band only, and `.tmv-table__scroll` exists for
+   exactly that reason: the alternative, making `.tmv-table` the scroller, would put the toolbar and
+   the pagination in the scrollport too, and they would slide sideways with the table.
+
+   The cost is the sticky header, and it is paid honestly rather than hidden: an `overflow-x: auto` box
+   is a scrollport even when it is not currently scrolling, so `thead th` sticks to *it* rather than to
+   the page, and the header scrolls away with the rows. Above 832px there is no scrollport and the
+   header is sticky again, which is every width where the table is long enough for that to matter. */
+@media (min-width: 42rem) and (max-width: 51.98rem) {
+  .tmv-table__scroll {
+    overflow-x: auto;
+  }
+}
+
+/* `sm` — the nav is an overlay, the tab row scrolls, tables become cards. */
+@media (max-width: 41.98rem) {
+  /* REQ-UI-006 AC2: no horizontal page overflow at 320px. Long unbroken strings are the usual cause
+     in this application — commit hashes, ids, MIME types — so they wrap rather than push. */
+  .tmv-content {
+    overflow-wrap: break-word;
+  }
+  .tmv-code,
+  .tmv-app-hash,
+  .tmv-snippet__text,
+  .tmv-diff__value-text,
+  .tmv-unresolved__id,
+  .tmv-compare__pane-hash,
+  .tmv-screen__detail {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* §7: entity tables have many columns, so at `sm` a row becomes a card — a threat model's rows are
+     read as records, not compared column-wise, and a horizontally-scrolling table would make every
+     row a scroll gesture. The label comes from `data-label`, which the table widget puts on every
+     data cell for exactly this rule. */
+  .tmv-table .cds--data-table,
+  .tmv-table .cds--data-table thead,
+  .tmv-table .cds--data-table tbody,
+  .tmv-table .cds--data-table tr,
+  .tmv-table .cds--data-table td {
+    display: block;
+    inline-size: auto;
+  }
+
+  .tmv-table .cds--data-table thead {
+    position: absolute;
+    overflow: hidden;
+    block-size: 1px;
+    clip: rect(0, 0, 0, 0);
+    inline-size: 1px;
+    white-space: nowrap;
+  }
+
+  /* `block-size: auto` is load-bearing, not tidying. Carbon's `.cds--data-table tr` is
+     `block-size: 3rem`, which is right for one line of columns and wrong for a card: the nine cells
+     still stacked correctly, but the row's *box* stayed 48px while its content ran to 245, so the
+     pagination bar — laid out 4px below that 48px row — was drawn straight across the card's
+     label/value pairs. Every entity table on a phone showed a card with its fields cut off by the bar
+     underneath it. */
+  .tmv-table .cds--data-table tr {
+    block-size: auto;
+    padding: 0.5rem 0.75rem;
+    border: var(--tmv-border);
+    margin-block-end: 0.75rem;
+    background-color: var(--cds-layer-01, #f4f4f4);
+  }
+
+  .tmv-table .cds--data-table td {
+    display: grid;
+    grid-template-columns: minmax(6rem, 40%) 1fr;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    border: 0;
+  }
+
+  .tmv-table .cds--data-table td::before {
+    content: attr(data-label);
+    color: var(--cds-text-secondary, #525252);
+    font-size: var(--tmv-text-xs);
+    font-weight: 600;
+  }
+
+  /* A cell with no label is a control cell — expand or select — and takes the full width without a
+     label column in front of it. */
+  .tmv-table .cds--data-table td:not([data-label])::before,
+  .tmv-table .cds--data-table td[data-label='']::before {
+    content: none;
+  }
+
+  .tmv-table .cds--data-table td:not([data-label]),
+  .tmv-table .cds--data-table td[data-label=''] {
+    display: block;
+  }
+
+  .tmv-table .cds--data-table td[colspan] {
+    display: block;
+    padding-inline: 0;
+  }
+
+  .tmv-compare__panes,
+  .tmv-detail,
+  .tmv-form__fields,
+  .tmv-diff__field,
+  .tmv-diff__value,
+  .tmv-commit-detail {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.25rem;
+  }
+
+  .tmv-diff__values {
+    grid-column: 1;
+  }
+
+  .tmv-matrix {
+    min-inline-size: 0;
+  }
+
+  /* `h1` is not restated here any more. `--tmv-text-xl` already reaches its 1.5rem floor at 320px,
+     and a second fixed size at this breakpoint would only be a third number to keep in step with
+     the two ends of the clamp. */
+
+  .tmv-switcher__name {
+    max-inline-size: 8rem;
+  }
+}
+
+/* -------------------------------------------------------------------------------------------- */
+/* 21. Motion, contrast, and the one thing a hostile model could still style                     */
+/* -------------------------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .tmv-switcher__caret,
+  .tmv-icon {
+    transition: none;
+  }
+  * {
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .tmv-band--very_low,
+  .tmv-band--low,
+  .tmv-band--medium,
+  .tmv-band--high,
+  .tmv-band--very_high,
+  .tmv-band--critical,
+  .tmv-matrix__swatch,
+  .tmv-meter__fill,
+  .tmv-dot {
+    forced-color-adjust: none;
+  }
+  .tmv-icon {
+    background-color: CanvasText;
+  }
+  .tmv-empty,
+  .tmv-drop-target {
+    border-color: CanvasText;
+  }
+}
+
+/* An imported document's own styles cannot reach the page — the sanitiser drops `style` elements and
+   attributes — but Mermaid's output can carry a `class` or a `style` attribute on an SVG node in a
+   form the sanitiser keeps as an attribute it recognises. Nothing in an imported diagram is allowed to
+   paint outside its own figure, so a diagram is a containing block for anything absolute inside it. */
+.tmv-diagram__figure,
+.tmv-diagram__host {
+  position: relative;
+  contain: paint;
+}
