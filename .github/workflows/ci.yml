@@ -288,12 +288,20 @@ jobs:
 
       # `gh` rather than a third-party release action: it is already on the runner, and this project
       # treats every added dependency as something that has to be justified (ADR-0009).
+      #
+      # `--repo` is load-bearing, and its absence is not obvious from reading this job. Nothing here
+      # checks the repository out — the artifact arrives from the build job and that is all this job
+      # needs — so there is no `.git` directory, and `gh` infers the repository from the local remote
+      # by default. Without the flag it exits with "failed to run git: fatal: not a git repository"
+      # *before* it reaches the API, which reads like an auth or permission failure and is neither.
       - name: Attach the artifact to the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
             dist/threat-model-viewport.html \
+            --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
-          || gh release upload "$GITHUB_REF_NAME" dist/threat-model-viewport.html --clobber
+          || gh release upload "$GITHUB_REF_NAME" dist/threat-model-viewport.html \
+            --clobber --repo "$GITHUB_REPOSITORY"
