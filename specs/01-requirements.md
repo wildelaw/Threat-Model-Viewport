@@ -730,6 +730,18 @@ Deleted entities **shall** be recoverable via undo until the change is committed
 - **AC** Undo restores deleted entities with their identifiers and references.
 - **Test:** `edit.delete-undo`
 
+### REQ-EDIT-011 — Model-level fields are editable
+The model's own name and description **shall** be editable through the same working-copy and commit
+flow as its entities. Until now only entity types had a form, so the model's name could be changed only
+by editing the embedded JSON or by exporting, renaming and re-importing.
+
+- **AC** The edit lands in the working copy and reaches the head only when it is committed.
+- **AC** A blank name is refused at the field, before the form is accepted.
+- **AC** The stored entry for a model is named after the model at storage's head, so a committed rename
+  survives a reload rather than reverting to the name embedded in the file.
+- **AC** The affordances are absent, not disabled, when the model is read-only.
+- **Test:** `edit.model-fields`, `ui.model-details-affordance`
+
 ---
 
 ## UI — Carbon shell and navigation
@@ -910,9 +922,9 @@ request not enumerated in REQ-SHELL-007.
 | `EXP` | 13 |
 | `IMP` | 10 |
 | `VIEW` | 9 |
-| `EDIT` | 10 |
+| `EDIT` | 11 |
 | `UI` | 12 |
 | `SEC` | 8 |
-| **Total** | **106** |
+| **Total** | **107** |
 
 Open items that affect requirements are tracked in `10-open-questions.md`.

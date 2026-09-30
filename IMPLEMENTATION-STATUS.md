@@ -189,6 +189,57 @@ the user did see claimed each failure was listed with its own reason. The reason
 the reason. Both halves of the message are conditional, because "the rest were applied" is a lie when
 nothing was — which is what happens when the field chosen has a rule the whole selection breaks.
 
+### The model's own fields have a dialog of their own (`15-forms.js`, `modelDetailsDialog`)
+
+`REQ-EDIT-001` scopes the working-copy edit flow to "every entity type", so until `REQ-EDIT-011` there
+was no form for the model itself. `model.name` could be changed only by editing the embedded JSON or by
+exporting, renaming and re-importing — and the second is not a rename at all, because the re-import
+collides on `modelId`.
+
+**Interpretation**, in the one place the new dialog had a choice to make. It writes only the fields the
+user changed, measured against the values the dialog opened with. `description` is a free-form field,
+so an import can leave something that is not a string in it — `description: {…}` is not reachable from
+a textarea, and rebuilding the model from the controls would replace it with `''` without anyone having
+touched it. That is precisely the failure `REQ-EDIT-009` exists to prevent at the entity level, and the
+same reasoning applies one level up. The name is the exception that is *not* one: it is required, so a
+blank one is refused at the field before the dialog can be accepted, and the check is `M.validate` on
+the candidate model rather than a second implementation of the rule.
+
+### A stored entry's name follows storage's head, not the file (`07-storage.js`, `seedRegistry`)
+
+`05-storage.md` §3 had every presentation field of a registry entry re-derived from the file on each
+load, the name included. That is what the code did, and it is right for the head, the count and the
+size. It is wrong for the name, and the difference only shows once something can change it: commit a
+rename to a file-backed model and the entry is named correctly until the next reload, at which point the
+file's older name comes back even though storage's head carries the new one. The feature would look
+broken on first use, and the bug would sit in the seed rather than in the rename.
+
+**Correction** — `05-storage.md` §3 has been amended, and the sentence that said the file wins is now
+explicit about its one exception. Where a `meta` record exists the entry's name comes from storage's own
+registry entry, which `saveModel` already upserts from the committed model; only the source hint and the
+last-opened time are refreshed from the file. `readMeta` has no name field and gaining one would be a
+storage-layout change, which is why the registry entry is the record that wins rather than `meta`.
+
+The residual is accepted and written down rather than papered over: `saveModel` writes `meta` before it
+upserts the registry, so a write that fails between the two leaves the entry's name one commit behind
+until the next successful save. §3 says so.
+
+### The switcher shows the working copy's name for the current entry, and the file's name for the file
+
+`07-ui.md` §4's first draft of this rule said the current entry shows the name in the working copy,
+without qualification, so that an uncommitted rename is visible in the header before it is committed —
+the same thing the dirty indicator says about the copy as a whole. The implementation scopes it to the
+current entry when that entry is a *registry* entry, and leaves the file's entry alone.
+
+**Correction** — §4 has been amended to match, because the implementation is the one that is right. The
+embedded model's entry denotes the model *in this file*, and a rename is committed to a history and
+never rewrites the file, so after renaming while the file's copy is open the two entries disagree. That
+is the accurate answer rather than a stale one, and it is also what `e2e/file-protocol.spec.mjs` asserts
+the header says when the file's model is the one open. The rule is bounded twice more: the delete
+confirmation takes the committed name regardless, because it names what storage holds rather than what
+is on screen, and the spoken name of the current entry follows its written name, since a control whose
+two names disagree is its own defect.
+
 ---
 
 ## Shell and UI

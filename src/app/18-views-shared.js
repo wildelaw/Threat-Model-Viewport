@@ -1274,11 +1274,21 @@
   // 6. Smaller shared pieces
   // ---------------------------------------------------------------------------------------------
 
-  /** The heading a section renders under. The shell owns the single `h1` (the tab name). */
-  function sectionHeading(ctx, text, note) {
+  /**
+   * The heading a section renders under, with an optional note and an optional action beside it. The
+   * shell owns the single `h1` (the tab name).
+   *
+   * The action is a fourth argument rather than a wrapper element so that every existing call site
+   * keeps the heading it had — the `h2` is returned bare when there is neither a note nor an action,
+   * which is the shape the section styles and the view tests expect.
+   */
+  function sectionHeading(ctx, text, note, actions) {
     var heading = core.el('h2', { class: 'tmv-section__title', text: text });
-    if (!note) return heading;
-    return core.el('div', { class: 'tmv-section__head' }, [heading, core.el('p', { class: 'tmv-section__note', text: note })]);
+    if (!note && !actions) return heading;
+    var head = core.el('div', { class: 'tmv-section__head' }, [heading]);
+    if (note) head.appendChild(core.el('p', { class: 'tmv-section__note', text: note }));
+    if (actions) head.appendChild(actions);
+    return head;
   }
 
   /**

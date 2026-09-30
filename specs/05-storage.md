@@ -109,6 +109,7 @@ may be silently reset — losing a theme choice is not losing work.
 
 `bytes` is our own accounting (§5), not a query to the browser. `sourceHint` is purely to help a human
 recognise an entry — it is never used to locate a file, because the app cannot read the filesystem.
+`name` is the model's name at storage's head, not the name in whichever file was opened last (§3).
 
 ---
 
@@ -129,9 +130,20 @@ That last row is both the feature and the hazard. It is the behaviour that makes
 (REQ-UI-004) useful on Chrome, and it is the behaviour that means any HTML file saved to disk can read
 every stored model. Both are documented in `08-security.md`.
 
-**The registry is a convenience index, not an authority.** If it disagrees with a file, the file wins.
-If it is empty but files exist, nothing is lost — they repopulate on open. This is why registry loss
-is survivable while history loss is not.
+**One field is not refreshed from the file: the entry's name.** Storage's own record describes what is
+stored, so once a `meta` exists the entry keeps the name at storage's head, and the file's embedded
+name fills in only where storage has no record at all. The name in a file is a snapshot of whenever it
+was exported, so preferring it would revert a rename on the next reload even though the stored history
+carries the newer name — `model.name` is an ordinary model field (`03-data-model.md` §2) and
+REQ-EDIT-011 makes it editable. The commit path is what sets it: `saveModel` writes the name the
+committed model carries. The `meta` and registry writes are not atomic, so a save that fails between
+them leaves the entry's name one commit behind until the next successful save. Nothing is lost when
+that happens — the committed history is the record, and the name catches up from it.
+
+**The registry is a convenience index, not an authority.** If it disagrees with a file about the model
+itself, the file wins — the entry's own name, above, is the single exception. If it is empty but files
+exist, nothing is lost — they repopulate on open. This is why registry loss is survivable while history
+loss is not.
 
 ---
 
@@ -289,6 +301,7 @@ assumed (`09-testing.md`).
 |---|---|
 | `store.origin-partitioned` | Same file, two origins — storage does not carry over, and the app says so |
 | `store.registry-reseed` | Clear storage, reopen a file, registry repopulates |
+| `store.registry-name-follows-head` | Reopen a file after a committed rename — the entry keeps the stored name, not the file's |
 | `store.quota-preflight` | A write projected over the threshold warns before writing |
 | `store.quota-exhausted` | Platform throws → clean failure, nothing removed, recovery offered |
 | `store.interrupted-commit` | Kill between blob write and head update → orphan, not dangling pointer |

@@ -61,7 +61,11 @@
   },
   "REQ-EDIT-010": {
     "title": "Deletion is recoverable until commit",
-    "statement": "303cb356ff9add96"
+    "statement": "b18373de46543999"
+  },
+  "REQ-EDIT-011": {
+    "title": "Model-level fields are editable",
+    "statement": "0a05195ff4dd2385"
   },
   "REQ-EXP-001": {
     "title": "Export to OTM",
@@ -185,7 +189,7 @@
   },
   "REQ-SEC-008": {
     "title": "No telemetry",
-    "statement": "8feb4f4061eeaf1c"
+    "statement": "91fdd2f6861972bd"
   },
   "REQ-SHELL-001": {
     "title": "One distributable file",

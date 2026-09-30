@@ -3,10 +3,11 @@
  * Requirements: REQ-VCS-015, REQ-STORE-004, REQ-STORE-005, REQ-STORE-006, REQ-STORE-007,
  * REQ-STORE-008, REQ-UI-005,
  * REQ-UI-009, REQ-SHELL-005, REQ-SHELL-007, REQ-SEC-006, REQ-SEC-008, REQ-EXP-010, REQ-EXP-012,
- * REQ-EXP-013, REQ-IMP-001, REQ-IMP-002, REQ-IMP-003, REQ-IMP-010.
+ * REQ-EXP-013, REQ-IMP-001, REQ-IMP-002, REQ-IMP-003, REQ-IMP-010, REQ-EDIT-011.
  *
- * Eight sections, and the split between them is the split between *this tool* and *this file*:
+ * Nine sections, and the split between them is the split between *this tool* and *this file*:
  *
+ *   Model       the model's own name and description, which belong to no entity and so to no tab
  *   Identity    who commits say they are, and the one place that claim is made
  *   Storage     what this browser is holding, how to open any of it, and the only actions that
  *               remove any of it
@@ -21,9 +22,12 @@
  *
  * **It does not put a settings object in front of the user's model.** Every choice here is a fact
  * about the tool — the identity on future commits, where history is cached, what the diagram loader
- * is — or about the document the user is looking at. Nothing here edits the threat model. Editing
- * belongs to the tabs that own the entities, with one exception: Danger Zone deletes this browser's
- * copy of a model, which is not an edit to the model at all.
+ * is — or about the document the user is looking at. Editing belongs to the tabs that own the
+ * entities. Model is the one exception, and it is a narrow one: the model's name and description are
+ * fields of the document itself, so no tab owns them and "somewhere else" was the only other answer.
+ * It is still not a preference — it goes through the working copy and the commit flow exactly as an
+ * entity form does (REQ-EDIT-011), and nothing here writes a setting on the model's behalf. Danger
+ * Zone is the other exception and is not an edit at all: it deletes this browser's copy.
  *
  * **It does not report a storage number it cannot stand behind.** `05-storage.md` §5 is explicit that
  * browsers do not expose remaining quota reliably, so the gauge is this application's own tally and
@@ -55,7 +59,7 @@
   var fallback = null;
 
   var SECTION_IDS = [
-    'identity', 'storage', 'import', 'export', 'diagram', 'appearance', 'about', 'danger-zone',
+    'model', 'identity', 'storage', 'import', 'export', 'diagram', 'appearance', 'about', 'danger-zone',
   ];
 
   // ---------------------------------------------------------------------------------------------
@@ -78,7 +82,7 @@
    * A bulleted list of plain sentences.
    *
    * Every string that reaches this function is written here, in this file — never assembled from model
-   * data. That is not an accident of these eight sections: the whole tab is prose about the
+   * data. That is not an accident of these nine sections: the whole tab is prose about the
    * application, and prose about the application has no untrusted input. Where a model value does
    * appear below (a size, a commit count, a schema version) it goes through `text:`, which is
    * `textContent`.
@@ -111,6 +115,71 @@
     return ctx.model && core.isString(ctx.model.name) && ctx.model.name !== ''
       ? ctx.model.name
       : 'Untitled threat model';
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Model (REQ-EDIT-011)
+  // ---------------------------------------------------------------------------------------------
+
+  /**
+   * The model's own fields, where the model is configured.
+   *
+   * `name` is the one required field in the canonical model (`03-data-model.md` §2), and until
+   * REQ-EDIT-011 the only routes to changing it were hand-editing the embedded JSON or exporting,
+   * renaming and re-importing — which collides on `modelId` and so is not really a rename at all. The
+   * Overview heading offers the same dialog; this section exists because "where is the model
+   * configured" is a question about this tab, and the answer being "somewhere else" is the kind of
+   * thing a user stops looking for.
+   *
+   * Read-only is a sentence rather than a dead button (REQ-VIEW-008, `07-ui.md` §9). The reason comes
+   * from the shell's own `readOnlyReason`, which is the same string the header banner is showing, so
+   * the two cannot come to different explanations.
+   */
+  function modelSection(ctx) {
+    var model = ctx.model;
+    var body = core.el('div', { class: 'tmv-settings__block' });
+
+    body.appendChild(V.definitionSection(ctx, {
+      title: 'The model’s own fields',
+      pairs: [
+        { term: 'Model id', value: core.el('code', { class: 'tmv-code', text: String(model.modelId || '') }) },
+        { term: 'Name', value: modelName(ctx) },
+        { term: 'Description', value: core.present(model.description) ? model.description : null },
+      ],
+    }));
+
+    if (ctx.editable) {
+      body.appendChild(actionRow([
+        widgets.button({
+          label: 'Edit model details',
+          kind: 'primary',
+          action: 'edit-model',
+          value: model.modelId,
+          title: 'Change the model’s name and description',
+        }),
+      ]));
+      body.appendChild(note(
+        'A change here is a working-copy edit like any other: it is in the history only once it is ' +
+        'committed, and it can be undone until then. The copy this browser is holding takes the new ' +
+        'name at that same commit, so a rename survives a reload instead of reverting to the name ' +
+        'embedded in the file.'
+      ));
+    } else {
+      body.appendChild(note(
+        'This model is read-only, so its name and description cannot be changed. ' +
+        (ctx.state && core.present(ctx.state.readOnlyReason)
+          ? ctx.state.readOnlyReason
+          : 'The model was opened read-only.')
+      ));
+    }
+
+    return V.section(
+      ctx,
+      'Model',
+      'The model’s own name and description. The rest of this tab is about this browser or the ' +
+        'application, not about the model.',
+      body
+    );
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -534,6 +603,20 @@
                   : 'Show the copy this browser is holding',
                 ariaLabel: 'Open the stored copy of ' + name,
               }),
+              // Absent, not disabled, when the model is read-only — unlike Open above, which is
+              // meaningful for every row and merely already done for one. Editing is not: there is no
+              // state of this page in which a read-only row could be edited, so a dead button would
+              // promise something that cannot happen (REQ-VIEW-008, `07-ui.md` §9).
+              ctx.editable
+                ? widgets.button({
+                    label: 'Edit details',
+                    kind: 'ghost',
+                    size: 'sm',
+                    action: 'edit-model',
+                    value: row.entry.modelId,
+                    ariaLabel: 'Edit the details of the stored copy of ' + name,
+                  })
+                : null,
               widgets.button({
                 label: 'Delete',
                 kind: 'danger--ghost',
@@ -1827,6 +1910,14 @@
         ctx.shell.switchModel(node.getAttribute('data-value') || undefined);
         return;
       }
+      if (action === 'edit-model') {
+        // The shell owns the dialog for the same reason it owns the open and the delete: the header
+        // and the Overview heading reach the same operation, and only the shell can decide whether
+        // this model may be edited at all. A value naming another stored model opens that model first
+        // — see `editModelDetails` — which is why this passes the value rather than ignoring it.
+        ctx.shell.editModelDetails(node.getAttribute('data-value') || undefined);
+        return;
+      }
       if (action === 'delete-model') {
         // The shell owns the confirmation and the deletion, because the header reaches the same
         // operation. Duplicating the dialog here would let the two drift apart in what they promise.
@@ -1967,6 +2058,9 @@
     }
     var node;
     switch (ctx.section) {
+      case 'model':
+        node = modelSection(ctx);
+        break;
       case 'storage':
         node = storageSection(ctx);
         break;
@@ -1999,7 +2093,7 @@
   /**
    * No findings on this tab.
    *
-   * None of the eight sections is a filter over the model, so there is no count that would read as a
+   * None of the nine sections is a filter over the model, so there is no count that would read as a
    * finding — and an empty object rather than a number here is what makes the side nav render no badge
    * at all instead of a zero. A storage warning is a *banner* in the header, visible from every tab
    * (`07-ui.md` §9), because it is a condition and not a count.

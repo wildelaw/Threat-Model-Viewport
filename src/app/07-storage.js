@@ -652,12 +652,19 @@
    *
    *   - no `meta` for this model → storage knows nothing; write the file's entry. This is the
    *     cleared-store and first-run case, and it is the whole point of seeding on every load;
-   *   - `meta` present → storage's own record wins for the head, the count and the size, and only
-   *     the presentation fields (name, source hint, last opened) are refreshed from the file.
+   *   - `meta` present → storage's own record wins for the head, the count, the size and the **name**,
+   *     and only the source hint and last-opened time are refreshed from the file.
    *
-   * So the registry is repopulated from the file alone exactly when the file is all there is, and
-   * never downgraded to a file's older head while a newer local history exists. Returns
-   * `{ action, entry }` where action is `created`, `refreshed` or `kept`.
+   * The name belongs on the winning side because it is a model field like any other — editable in the
+   * app (REQ-EDIT-011) and therefore part of what a commit records. The name in a file is a snapshot of
+   * whenever that file was exported, so taking it here would revert a committed rename on the next
+   * load, showing the new name until reload and the old one afterwards while storage's head held the
+   * new one all along. `saveModel` writes the name at storage's head; this reads it back.
+   *
+   * So the registry is repopulated from the file alone exactly when the file is all there is: it is
+   * never downgraded to a file's older head, and a stored entry is always named after the model at
+   * storage's head rather than after whichever file was opened last. Returns `{ action, entry }` where
+   * action is `created`, `refreshed` or `kept`.
    */
   function seedRegistry(adapter, container, options) {
     var fileEntry = embeddedEntry(container, options);
@@ -676,9 +683,10 @@
     var meta = readMeta(adapter, fileEntry.modelId);
     var entry = {
       modelId: fileEntry.modelId,
-      name: fileEntry.name,
       // Storage's own record describes what is stored; the file only fills in what storage cannot
-      // know. Without a `meta` the entry itself is the record, and is left exactly as it stands.
+      // know. Without a `meta` the entry itself is the record, and is left exactly as it stands — the
+      // name included, which is why it comes from `previous` and not from the file (see above).
+      name: meta ? previous.name : fileEntry.name,
       headCommitId: meta ? meta.headCommitId : previous.headCommitId,
       commitCount: meta ? meta.commitCount : previous.commitCount,
       bytes: meta ? storedBytes(adapter, fileEntry.modelId) : previous.bytes,
@@ -867,8 +875,11 @@
       }),
     );
 
-    // The registry is a pointer too, so it follows the meta rather than leading it. A crash between
-    // the two leaves an index that is behind, which the next load re-derives from `meta`.
+    // The registry is a pointer too, so it follows the meta rather than leading it. A write that fails
+    // between the two leaves the index a commit behind, and nothing re-derives it: the entry's name is
+    // read back from this record rather than from the file (see `seedRegistry`), so it keeps the
+    // previous name until the next successful save. That is a stale label rather than a loss — every
+    // commit is already written, and the name catches up from the next one.
     upsertRegistry(adapter, {
       modelId: modelId,
       name: opts.name || (opts.model && core.isString(opts.model.name) ? core.nfc(opts.model.name) : 'Untitled Threat Model'),

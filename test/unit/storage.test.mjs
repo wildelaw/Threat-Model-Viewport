@@ -145,6 +145,57 @@ specTest('store.registry-seeded-every-load', () => {
   assert.equal(S.seedRegistry(memory(), hostile, {}).action, 'skipped');
 });
 
+specTest('store.registry-name-follows-head', () => {
+  // `05-storage.md` §3: a stored entry is named after the model at **storage's head**, not after
+  // whichever file was opened last. This is the case that made REQ-EDIT-011 look broken on first
+  // use — rename, commit, reload, and the old name is back while storage's head carries the new one
+  // all along — because seeding took the name from the file on every load.
+  const adapter = memory();
+  const { model, history, container } = seeded('model-n', 'Original name');
+  commitThreat(history, 'A threat', 'threat-1');
+
+  // Storage is empty, so the file is all there is and its name is the entry's name. The fix must not
+  // have made the file's name unusable — this is the first-run and cleared-store case, and it is the
+  // whole reason seeding happens on every load (REQ-STORE-003).
+  const first = S.seedRegistry(adapter, container, { now: NOW });
+  assert.equal(first.action, 'created');
+  assert.equal(first.entry.name, 'Original name', 'a first load names the entry after the file');
+  assert.equal(S.readMeta(adapter, 'model-n'), null, 'and storage holds no record of the model yet');
+
+  // A committed rename, written the way the commit path writes it: `saveModel` upserts the name of
+  // the model at the new head.
+  const renamed = core.deepCopy(vcs.headModel(history));
+  renamed.name = 'Renamed after a commit';
+  const renameCommit = vcs.commit(history, renamed, ALICE, 'rename', { timestamp: NOW });
+  assert.equal(renameCommit.ok, true, 'the rename committed');
+  S.saveModel(adapter, history, { modelId: 'model-n', model: renamed, name: renamed.name });
+  assert.equal(S.listModels(adapter)[0].name, 'Renamed after a commit', 'the commit renames the stored entry');
+
+  // Now reopen the *old* file: its embedded model still carries the old name, and its history is a
+  // commit behind storage's head. The entry keeps storage's name, because that is the name the head
+  // it points at holds. A name taken from the file here would describe a history the entry is not
+  // pointing at.
+  const stale = {
+    model,
+    history: { keyframeInterval: history.keyframeInterval, head: history.commits[0].id, commits: [history.commits[0]] },
+  };
+  const reseeded = S.seedRegistry(adapter, stale, { now: '2031-01-01T00:00:00.000Z' });
+  assert.equal(reseeded.action, 'refreshed', 'the load refreshed the entry');
+  assert.equal(reseeded.entry.name, 'Renamed after a commit', 'the file’s older name does not win');
+  assert.equal(S.listModels(adapter)[0].name, 'Renamed after a commit', 'and that is what is written back');
+  assert.equal(reseeded.entry.headCommitId, renameCommit.commit.id, 'the head is still storage’s');
+  assert.notEqual(reseeded.entry.headCommitId, stale.history.head, 'and not the file’s older one');
+
+  // A model id this browser has never seen is still seeded from its file, so the rule above is about
+  // *one* id and its own stored record rather than "the file never names anything".
+  const other = seeded('model-o', 'A different model');
+  assert.equal(S.seedRegistry(adapter, other.container, { now: NOW }).entry.name, 'A different model');
+
+  // The rename survives a reload the app actually performs: seeding in place, then reading back.
+  const again = S.seedRegistry(adapter, stale, { now: '2032-01-01T00:00:00.000Z' });
+  assert.equal(again.entry.name, 'Renamed after a commit', 'and it is stable across loads');
+});
+
 specTest('store.registry-reseed', () => {
   // The §9 case, stated from the storage side rather than the requirement's: storage is *cleared*
   // underneath the application and the next load rebuilds the index from the file alone. This is the

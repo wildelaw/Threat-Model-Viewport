@@ -41,11 +41,35 @@
   // Summary
   // ---------------------------------------------------------------------------------------------
 
+  /**
+   * The model's own fields, for the heading of the screen that shows them (REQ-EDIT-011).
+   *
+   * Returned as a node rather than wired here, because the tab's click handling is one delegated
+   * listener in `wire` — a listener per button would be one more thing to keep in step with the shell
+   * rebuilding this node on every render.
+   */
+  function editButton() {
+    return widgets.button({
+      label: 'Edit model details',
+      kind: 'tertiary',
+      size: 'sm',
+      action: 'edit-model',
+      title: 'Change the model’s name and description',
+    });
+  }
+
   function summarySection(ctx) {
     var root = core.el('div', { class: 'tmv-overview' });
     var model = ctx.model;
 
-    root.appendChild(V.sectionHeading(ctx, model.name || 'Untitled threat model', null));
+    // Absent when the model is read-only, rather than present and dead (§9, REQ-VIEW-008). The model's
+    // name is the heading of this screen, which makes this the first place someone looks to change it.
+    root.appendChild(V.sectionHeading(
+      ctx,
+      model.name || 'Untitled threat model',
+      null,
+      ctx.editable ? editButton() : null,
+    ));
 
     if (core.present(model.description)) {
       root.appendChild(core.el('p', { class: 'tmv-model__description', text: model.description }));
@@ -483,6 +507,7 @@
       if (action === 'go-section') ctx.go(node.getAttribute('data-tab'), node.getAttribute('data-section'));
       else if (action === 'go-import') ctx.go('settings', 'import');
       else if (action === 'go-diagram') ctx.go('architecture', 'diagram');
+      else if (action === 'edit-model') ctx.shell.editModelDetails();
     });
     // `core.delegate` returns the *remover*, not the node — returning its result from a render would
     // hand the shell a function to append, which is a bug that only shows up in a real DOM.

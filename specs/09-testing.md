@@ -124,7 +124,7 @@ The authoritative mapping is the `Test:` line in each requirement. This is the s
 | `EXP` | 13 | `exp.tml-schema-identifier`, `exp.pristine-dom`, `exp.script-byte-identical`, `exp.self-verify` |
 | `IMP` | 10 | `imp.detect-*`, `imp.dangling-refs-warn`, `imp.roundtrip-stable`, `sec.import-html-no-exec` |
 | `VIEW` | 9 | `view.entity-coverage`, `view.diagram-coordinates`, `view.diagram-mermaid-lazy`, `perf.large-model` |
-| `EDIT` | 10 | `edit.crud-coverage`, `edit.reference-selects`, `edit.passthrough-preserved` |
+| `EDIT` | 11 | `edit.crud-coverage`, `edit.reference-selects`, `edit.passthrough-preserved`, `edit.model-fields`, `ui.model-details-affordance` |
 | `UI` | 12 | `ui.sidenav-per-tab`, `ui.tabs-keyboard`, `a11y.axe-core`, `sec.sri-pinned` |
 | `SEC` | 8 | `sec.xss-model-fields`, `sec.svg-sanitized`, `sec.prototype-pollution`, `sec.no-exfiltration` |
 

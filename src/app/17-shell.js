@@ -165,6 +165,7 @@
       id: 'settings',
       label: 'Settings',
       sections: [
+        { id: 'model', label: 'Model' },
         { id: 'identity', label: 'Identity' },
         { id: 'storage', label: 'Storage' },
         { id: 'import', label: 'Import' },
@@ -452,10 +453,38 @@
     return parts.join(' · ');
   }
 
+  /**
+   * The name the header renders for an entry, which is not always the name the entry carries.
+   *
+   * The entry for the model being **edited** is labelled with the name in the working copy, so a
+   * rename is visible in the header before it is committed — the same thing the dirty indicator
+   * already says about the copy as a whole (REQ-EDIT-005, REQ-EDIT-011, §4).
+   *
+   * Three limits on that, and they are the reason this is a function here rather than an assignment to
+   * the entry objects in `switcherEntries`:
+   *
+   *   - **It is display only, and display only for the current entry.** `state.switcherEntries` keeps
+   *     the committed names, so the delete confirmation (which names the model with `entryHeadline`)
+   *     and every other entry's label describe a name that is actually in a history.
+   *   - **The embedded model is excluded.** What its entry names is the file, so it shows the file's
+   *     name whichever copy of that model is open. A rename is committed to a history and never
+   *     rewrites the file, so after renaming while the file's copy is open the two entries disagree —
+   *     and that is the accurate answer rather than a stale one.
+   *   - **The accessible names follow the visible label**, because a control whose spoken name and
+   *     written name disagree is its own defect. That is why `entryName` below uses this too.
+   */
+  function renderedName(entry) {
+    if (!entry || !entry.current || entryKindOf(entry) === 'file') return entryHeadline(entry);
+    if (core.isObject(state.model) && core.isString(state.model.name) && state.model.name !== '') {
+      return core.nfc(state.model.name);
+    }
+    return entryHeadline(entry);
+  }
+
   /** The full accessible name of a switcher option, which is not the visual label. */
   function entryName(entry, nowMs) {
     var kind = entryKindOf(entry);
-    var text = entryHeadline(entry) + ' — ' + entryDetail(entry, nowMs);
+    var text = renderedName(entry) + ' — ' + entryDetail(entry, nowMs);
     if (kind === 'file') text += ' — from the file';
     if (kind === 'session') text += ' — imported in this session, not saved';
     if (entry.current) text += ' — current';
@@ -986,7 +1015,7 @@
     state.switcherEntries = entries;
     state.switcherCurrent = current;
 
-    var name = entryHeadline(current);
+    var name = renderedName(current);
     var trigger = core.el('button', {
       type: 'button',
       class: 'cds--header__action tmv-switcher',
@@ -1025,7 +1054,7 @@
         'aria-label': entryName(entry, null),
       }, [
         core.el('span', { class: 'cds--list-box__menu-item__option' }, [
-          core.el('span', { class: 'tmv-switcher__entry-name', text: entryHeadline(entry) }),
+          core.el('span', { class: 'tmv-switcher__entry-name', text: renderedName(entry) }),
           core.el('span', { class: 'tmv-switcher__entry-meta', text: entryDetail(entry, null) }),
         ]),
         isCurrent ? widgets.icon('check') : null,
@@ -1079,6 +1108,13 @@
       { label: 'Export this model…', action: 'goto', value: 'export' },
       { separator: true },
     ];
+    // Absent, not disabled, on a read-only model (§9): a dead control in a menu invites a hunt for
+    // whatever would make it live. It sits here rather than on a switcher row for the reason §4 gives
+    // for delete — a control nested inside a listbox option is not valid ARIA and cannot be reached
+    // from the keyboard.
+    if (state.editable) {
+      fileEntries.push({ label: 'Edit model details…', action: 'edit-model' });
+    }
     if (del.available) {
       fileEntries.push({ label: 'Delete this model from this browser…', action: 'delete-stored', danger: true });
     } else {
@@ -1092,6 +1128,7 @@
       onSelect: function (node) {
         var action = node.getAttribute('data-action');
         if (action === 'goto') go('settings', node.getAttribute('data-value'));
+        else if (action === 'edit-model') editModelDetails();
         else if (action === 'delete-stored') confirmDeleteStored();
       },
     });
@@ -1802,17 +1839,97 @@
     return instance;
   }
 
-  function switchModel(value) {
-    var target = null;
+  /** The switcher entry for a value, from the list the switcher last rendered. */
+  function entryFor(value) {
     var entries = state.switcherEntries || [];
-    for (var i = 0; i < entries.length; i++) if (entries[i].value === value) target = entries[i];
+    for (var i = 0; i < entries.length; i++) if (entries[i].value === value) return entries[i];
+    return null;
+  }
+
+  /**
+   * Open an entry, having asked whatever has to be asked first.
+   *
+   * Session first, then dirty: the two questions are asked in that order because leaving the page's
+   * only copy is the larger act, and answering the smaller one first would commit work to a model
+   * that is about to be thrown away.
+   *
+   * `then` runs after the open, and only if it happened. It cannot be a caller checking afterwards,
+   * because a guard may ask its question in a dialog and return immediately — the answer arrives long
+   * after the call, which is exactly when a "did it open?" test on the way out would be worthless.
+   */
+  function guardedOpen(entry, then) {
+    return guardAbandonSession(function () {
+      return guardSwitch(function () {
+        var opened = openEntry(entry, { announce: true });
+        if (opened && then) then();
+        return opened;
+      });
+    });
+  }
+
+  function switchModel(value) {
+    var target = entryFor(value);
     if (!target) return null;
     if (target.current) return null;
-    // Session first, then dirty: the two questions are asked in that order because leaving the page's
-    // only copy is the larger act, and answering the smaller one first would commit work to a model
-    // that is about to be thrown away.
-    return guardAbandonSession(function () {
-      return guardSwitch(function () { openEntry(target, { announce: true }); });
+    return guardedOpen(target);
+  }
+
+  /**
+   * Edit the model's own name and description (REQ-EDIT-011).
+   *
+   * Two shapes of call, and the difference between them matters:
+   *
+   *   - no id, or the id of the model already open → the dialog opens on the working copy;
+   *   - the id of another model the switcher lists → that model is opened first, through the same
+   *     guards a switcher selection goes through, and the dialog opens on it.
+   *
+   * The alternative for the second case — committing a rename straight to a history nobody is looking
+   * at — is the shape of `confirmDeleteStored`, and it would have to reimplement the quota, write-token
+   * and conflict handling that `persistHistory` owns. Its cost is real and worth naming: cancelling the
+   * dialog leaves the other model open, which is where that model's own Open action would have left the
+   * user anyway, and which the switcher immediately shows.
+   *
+   * A read-only model is refused here, before any dialog exists, so there is one place that decides
+   * whether the edit may happen at all rather than one per affordance.
+   */
+  function editModelDetails(modelId) {
+    if (!state.editable) {
+      notify().failure({
+        title: 'This model cannot be edited',
+        detail: state.readOnlyReason || 'The model was opened read-only, so its details cannot be changed.',
+        ref: 'shell.edit-model.read-only',
+      });
+      return null;
+    }
+    if (core.isString(modelId) && modelId !== currentModelId()) {
+      var target = entryFor(modelId);
+      if (!target) return null;
+      return guardedOpen(target, function () { modelDetailsDialogFor(state.model); });
+    }
+    return modelDetailsDialogFor(state.model);
+  }
+
+  /**
+   * The dialog, and what happens when it is saved.
+   *
+   * The next model comes from `forms.withModelFields` — a copy of the root with the two changed fields
+   * written into it — so the entity arrays and the `x` passthrough bags are the objects they already
+   * were. A rename has no path by which it could reach an imported file's uninterpreted data, which is
+   * the property ADR-0004 is protecting.
+   *
+   * The save goes through `edit`, so it is an ordinary working-copy change: dirty indicator, undo, the
+   * commit dialog's summary, and nothing written to storage until a commit.
+   */
+  function modelDetailsDialogFor(model) {
+    return TMV.forms.modelDetailsDialog({
+      model: model,
+      disabled: !state.editable,
+      onSave: function (fields) {
+        edit(TMV.forms.logic.withModelFields(state.model, fields), {
+          reason: 'edit-model',
+          label: 'Edit model details',
+        });
+      },
     });
   }
 
@@ -2987,6 +3104,7 @@
     runCollection: runCollection,
 
     switchModel: switchModel,
+    editModelDetails: editModelDetails,
     openEntry: openEntry,
     openEmbedded: openEmbedded,
     openStored: openStored,
