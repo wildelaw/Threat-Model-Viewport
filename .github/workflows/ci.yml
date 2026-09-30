@@ -1,0 +1,275 @@
+# ci.yml — the pipeline specified by `specs/09-testing.md` §8.
+#
+# §8's stage table is the specification for this file, and three of its lines are the ones a
+# conventional workflow would get wrong:
+#
+# 1. **The build stage runs first, from a clean checkout, with no install step.** That is the
+#    machine-checkable form of REQ-SHELL-003 (§8, and `CLAUDE.md`): if anyone adds a build dependency
+#    to `build.mjs`, this job fails on a checkout that has nothing installed, where a workflow that
+#    ran `npm ci` first would succeed and the requirement would quietly stop being true. The job
+#    therefore *asserts* `node_modules` is absent before it builds, so the property is stated rather
+#    than left as an emergent consequence of step order.
+#
+# 2. **Safari and Edge are non-blocking and nightly.** Rather than duplicating the pipeline into a
+#    second file, the engine set is chosen from the event: a push or pull request provisions chromium
+#    and firefox, the nightly schedule and a manual dispatch add webkit. The suite already reports an
+#    engine it could not start as an annotation instead of skipping silently (`e2e/matrix.spec.mjs`),
+#    so a run that did not provision an engine says so in its output rather than claiming a matrix it
+#    never exercised.
+#
+# 3. **The build is uploaded once and downloaded by the later jobs, which do not rebuild.** The bytes
+#    that were tested are then the bytes that are published — which is the property `08-security.md`
+#    leans on when it says the artifact's hash is what was audited. The dependency-free build is
+#    still exercised from scratch by the `build` job and by `build.clean-checkout` in the unit suite,
+#    so nothing is taken on trust here.
+#
+# `perf.large-model` is "reported but not asserted" (§8). It is run twice on purpose: once inside the
+# blocking suite, where its *structural* assertions (a bounded DOM, a pager that names the whole
+# model) can fail a pull request, and once as its own non-blocking step so the timings are legible in
+# the run summary instead of buried in TAP output. It asserts no duration, so neither run can flake.
+
+name: CI
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  # Safari/WebKit is slow to provision and is therefore not on the blocking path (§8). Its absence
+  # there "must not become a reason to skip it", so the same pipeline runs nightly with every engine.
+  schedule:
+    - cron: '43 6 * * *'
+  workflow_dispatch:
+    inputs:
+      full_matrix:
+        description: 'Provision every engine (WebKit included), as the nightly run does'
+        type: boolean
+        default: false
+
+# Scoped to the ref, so a superseded pull-request run is cancelled but a release run never is.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Read-only by default. Only the release job widens this, and only to `contents: write`, which is
+# what attaching a file to a release needs. `08-security.md` §12's "no npm supply chain in the
+# artifact" is about `dist/`; this is the pipeline's own exposure, kept minimal for the same reason.
+permissions:
+  contents: read
+
+env:
+  # 'true' on the nightly schedule and on a manual dispatch that asks for it, 'false' otherwise.
+  TMV_FULL_MATRIX: ${{ github.event_name == 'schedule' || github.event.inputs.full_matrix == 'true' }}
+
+jobs:
+  # ---------------------------------------------------------------------------------------------
+  # Build — blocking, and the only job that must not install anything.
+  # ---------------------------------------------------------------------------------------------
+  build:
+    name: Build (clean checkout, no install)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      # Stated explicitly rather than assumed from the absence of an `npm ci` above. If a future edit
+      # adds an install step to this job, this fails and says why — which is the whole point of
+      # running the build before anything is installed.
+      - name: Assert nothing is installed
+        run: |
+          if [ -d node_modules ]; then
+            echo "::error::node_modules is present. The build stage runs from a clean checkout with"
+            echo "::error::no install step; that is the machine-checkable form of REQ-SHELL-003."
+            exit 1
+          fi
+          echo "clean checkout: no node_modules, no install step"
+
+      - name: Build the artifact
+        run: node build.mjs
+
+      - name: Report what was produced
+        run: |
+          ls -l dist/
+          sha256sum dist/threat-model-viewport.html
+
+      # `if-no-files-found: error` matters here: a build that silently produced nothing would
+      # otherwise leave the later jobs to fail with a confusing "no such file" instead of this job
+      # failing with the real cause.
+      - name: Upload the artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: threat-model-viewport
+          path: dist/threat-model-viewport.html
+          if-no-files-found: error
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------------------------
+  # Test — blocking. Static analysis, unit, property, interop, traceability and accessibility all
+  # come from the one harness §2 specifies (`node --test`), so they are one step rather than five
+  # that could drift apart from what a developer runs locally.
+  # ---------------------------------------------------------------------------------------------
+  test:
+    name: Static, unit, interop, traceability, a11y
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      # The suite has development-only dependencies — Ajv for `interop.validator-vs-ajv`, axe-core for
+      # `a11y.axe-core` (§2). They never enter `dist/`; the build job above proves that by building
+      # without them.
+      - name: Install test dependencies
+        run: npm ci
+
+      # Every static, unit and a11y test reads `dist/threat-model-viewport.html` — the artifact that
+      # ships, not the sources (§5). It arrives from the build job so that what is checked here is
+      # exactly what gets published.
+      - name: Take the built artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: threat-model-viewport
+          path: dist
+
+      - name: Run the suite
+        run: node --test
+
+      - name: Performance benchmark (reported, not asserted — §8)
+        continue-on-error: true
+        run: node --test test/perf.test.mjs
+
+  # ---------------------------------------------------------------------------------------------
+  # End-to-end — blocking on chromium and firefox, both protocols (§8, §4).
+  # ---------------------------------------------------------------------------------------------
+  e2e:
+    name: End-to-end (browser × protocol matrix)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install test dependencies
+        run: npm ci
+
+      - name: Take the built artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: threat-model-viewport
+          path: dist
+
+      # Which engines this run provisions, and therefore which half of §4's matrix it exercises.
+      - name: Choose the engine set
+        run: |
+          ENGINES="chromium firefox"
+          if [ "$TMV_FULL_MATRIX" = "true" ]; then
+            ENGINES="$ENGINES webkit"
+          fi
+          echo "TMV_ENGINES=$ENGINES" >> "$GITHUB_ENV"
+          echo "provisioning: $ENGINES"
+
+      # Cached on the Playwright version, since that is what determines the browser builds. The key
+      # includes the engine set so the slim and full runs do not evict each other's entries.
+      - name: Cache browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ env.TMV_FULL_MATRIX }}
+
+      - name: Install browsers
+        run: npx playwright install --with-deps $TMV_ENGINES
+
+      # The suite already *reports* an engine it cannot launch, but a green run with half the matrix
+      # skipped reads the same as a green run with all of it. §4 asks for chromium and firefox on
+      # every blocking run, so a missing one is a provisioning failure here rather than a silent
+      # reduction in coverage there.
+      #
+      # The check is written into the workspace rather than `$RUNNER_TEMP` on purpose: it imports
+      # `@playwright/test`, and an ESM import is resolved from the file's own location, so a copy
+      # outside the checkout cannot see `node_modules`.
+      - name: Verify the required engines launch
+        run: |
+          cat > engines-check.mjs <<'EOF'
+          const required = (process.env.TMV_ENGINES || '').split(/\s+/).filter(Boolean);
+          const playwright = await import('@playwright/test');
+          const failed = [];
+          for (const name of required) {
+            try {
+              const browser = await playwright[name].launch();
+              console.log(`${name}: launched (${browser.version()})`);
+              await browser.close();
+            } catch (error) {
+              failed.push(`${name}: ${String(error.message).split('\n')[0]}`);
+            }
+          }
+          if (failed.length > 0) {
+            console.error(`These engines were provisioned but would not start:\n  ${failed.join('\n  ')}`);
+            process.exit(1);
+          }
+          EOF
+          status=0
+          node engines-check.mjs || status=$?
+          rm -f engines-check.mjs
+          exit $status
+
+      # The suite is run exactly as a developer runs it — `playwright.config.mjs` chooses the
+      # reporter, and this job does not override it, so CI and a local run execute the same command.
+      # `test-results/` is where Playwright writes anything it saves on failure; today the config
+      # turns nothing on there, so this captures nothing and `ignore` keeps that from being an error.
+      # It is kept because a failure in the `file://` half of the matrix is the hardest thing in this
+      # project to reason about from a log alone, and this is where evidence for one would land.
+      - name: Run the end-to-end suites
+        run: npx playwright test
+
+      - name: Upload anything the run saved
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------------------------
+  # Release — pushes the tag's artifact to a GitHub Release, so the file a user downloads is the
+  # file the pipeline tested. Only ever runs on a `v*` tag.
+  # ---------------------------------------------------------------------------------------------
+  release:
+    name: Publish the artifact to a release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build, test, e2e]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: threat-model-viewport
+          path: dist
+
+      # `gh` rather than a third-party release action: it is already on the runner, and this project
+      # treats every added dependency as something that has to be justified (ADR-0009).
+      - name: Attach the artifact to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/threat-model-viewport.html \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+          || gh release upload "$GITHUB_REF_NAME" dist/threat-model-viewport.html --clobber

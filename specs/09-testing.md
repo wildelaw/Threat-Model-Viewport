@@ -72,15 +72,43 @@ A test in `test/traceability.test.mjs`:
 6. Asserts requirement ids are unique and no id has been reused for a different statement — the id
    registry is compared against a frozen list so a retired id cannot be recycled.
 
+**Where citations come from.** Step 2 is the primary source, and it is not the only one. Two documents
+name suite tests in an explicit table rather than through a requirement, and those tests are no less
+asked for: `05-storage.md` §9 (storage behaviour spanning several requirements — an interrupted
+commit, a second tab, a migration crash) and `06-interchange.md` §11 (differential interchange tests,
+which no single requirement owns because each cuts across the OTM and TML mappings). Reading only
+`01-requirements.md` would push those tests into the orphan list, which is where tests *nobody* asked
+for belong — and a list that is wrong is a list people learn to route around. The citing documents
+live in `CITING_DOCUMENTS` in `test/lib/spec.mjs`.
+
+**The collection is textual, and deliberately a second implementation.** `test/lib/check.mjs` refuses
+an uncited name at the moment a test file loads, which catches a typo in the file being run. The
+traceability test instead parses the declared names out of the sources. Neither subsumes the other: a
+runtime check cannot see a test that was deleted, and a source parse cannot see whether a name is
+spelled the way the specification spells it if the file never runs. Importing the test modules to ask
+them what they declared would run the suite, which is what `node --test` is for.
+
 **The exemption list** holds tests that check the *release artifact* rather than a behaviour anyone
 asked for. `store.no-test-hooks-in-release` is currently its only member: it asserts a condition of
-`dist/` (no fault-injection hook compiled in) and no requirement would sensibly name it. The list lives
-in `test/traceability.test.mjs` beside the assertion that reads it, so adding to it appears in review
-as a deliberate act rather than a quiet edit — which is the property that makes the rule worth having.
+`dist/` (no fault-injection hook compiled in) and no requirement would sensibly name it. The list is
+`EXEMPT` in `test/lib/spec.mjs`, where both the name check in `check.mjs` and the assertion here can
+read it, so adding to it appears in review as a deliberate act rather than a quiet edit — which is the
+property that makes the rule worth having. Two further cases guard the list itself: every exempt name
+must still be a test that exists, and the traceability test's *own* cases are declared with
+`node:test` under ordinary prose names rather than exempted, so the list cannot grow to cover the
+checker.
 
 Failures name the requirement id or the orphaned test. **This test is what makes the spec load-bearing
 rather than decorative** — without it, the documents and the code drift within a few iterations and the
 spec becomes historical fiction.
+
+**Browser tests declare themselves the same way.** The end-to-end specs in `e2e/` run under
+Playwright, not `node --test`, so they cannot call `specTest`. They call `e2eTest(name)` from
+`test/lib/check.mjs`, which applies the identical name check and returns the name for Playwright's own
+runner to take (`test(e2eTest('e2e.ui.shell'), …)`). One rule, two runners. The directory is beside
+`test/` rather than inside it because `node --test` with no path arguments imports every module under
+any directory named `test/`, which would hand a Playwright spec to the unit runner; the traceability
+collector therefore reads both roots (see `02-architecture.md` §3 for the layout).
 
 ### Requirement coverage by domain
 

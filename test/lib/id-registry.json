@@ -1,0 +1,426 @@
+{
+  "REQ-DATA-001": {
+    "title": "Model data is inline",
+    "statement": "26c49c34a3b86b31"
+  },
+  "REQ-DATA-002": {
+    "title": "Escaping is round-trip safe",
+    "statement": "cacb8c8b814a46f7"
+  },
+  "REQ-DATA-003": {
+    "title": "The container is versioned and self-describing",
+    "statement": "06d07440f2cfe84c"
+  },
+  "REQ-DATA-004": {
+    "title": "Canonical model with passthrough bags",
+    "statement": "79a8ae5f85c92abc"
+  },
+  "REQ-DATA-005": {
+    "title": "Invalid embedded data never destroys anything",
+    "statement": "73db715adfff2c0c"
+  },
+  "REQ-DATA-006": {
+    "title": "Model identity is a stable UUID",
+    "statement": "55ce709557baf6bf"
+  },
+  "REQ-EDIT-001": {
+    "title": "Full CRUD on every entity type",
+    "statement": "be6bf950f17dbaa8"
+  },
+  "REQ-EDIT-002": {
+    "title": "Field validation",
+    "statement": "12a756e0e3b58227"
+  },
+  "REQ-EDIT-003": {
+    "title": "References are maintained by the UI",
+    "statement": "4e2572e7387c0d9f"
+  },
+  "REQ-EDIT-004": {
+    "title": "Structural edits preserve the model",
+    "statement": "a6b565e92016581b"
+  },
+  "REQ-EDIT-005": {
+    "title": "Dirty state is always visible",
+    "statement": "91e4f990a1a58184"
+  },
+  "REQ-EDIT-006": {
+    "title": "Commit dialog",
+    "statement": "f15e9b5c9b5d05ff"
+  },
+  "REQ-EDIT-007": {
+    "title": "Discard changes",
+    "statement": "b2e2f19543734591"
+  },
+  "REQ-EDIT-008": {
+    "title": "Bulk operations",
+    "statement": "4c972a9fa2984459"
+  },
+  "REQ-EDIT-009": {
+    "title": "Passthrough data is preserved through edits",
+    "statement": "1872aa3adbc2b46b"
+  },
+  "REQ-EDIT-010": {
+    "title": "Deletion is recoverable until commit",
+    "statement": "303cb356ff9add96"
+  },
+  "REQ-EXP-001": {
+    "title": "Export to OTM",
+    "statement": "f59d7410bcbc21e6"
+  },
+  "REQ-EXP-002": {
+    "title": "Export to OWASP TML",
+    "statement": "d4dc0bb19c64ca44"
+  },
+  "REQ-EXP-003": {
+    "title": "Lossiness is disclosed before export",
+    "statement": "62e836837b2e76e7"
+  },
+  "REQ-EXP-004": {
+    "title": "Passthrough bags are re-emitted",
+    "statement": "05a51cc07a6007c6"
+  },
+  "REQ-EXP-005": {
+    "title": "Identifiers are exported safely",
+    "statement": "f4de3a1385078bd5"
+  },
+  "REQ-EXP-006": {
+    "title": "Native container export",
+    "statement": "80ba86816c089b2c"
+  },
+  "REQ-EXP-007": {
+    "title": "App re-export",
+    "statement": "9177cac5e08185a1"
+  },
+  "REQ-EXP-008": {
+    "title": "Self-export uses the pristine DOM",
+    "statement": "c6b313058f0950ee"
+  },
+  "REQ-EXP-009": {
+    "title": "Application code is preserved byte-identically",
+    "statement": "31beb95452aa109a"
+  },
+  "REQ-EXP-010": {
+    "title": "Export is verified before download",
+    "statement": "49374c19a1e5f090"
+  },
+  "REQ-EXP-011": {
+    "title": "Export filenames are predictable",
+    "statement": "75d3ac86201f687a"
+  },
+  "REQ-EXP-012": {
+    "title": "Export works without a server",
+    "statement": "8d76819f46920785"
+  },
+  "REQ-EXP-013": {
+    "title": "Export is always available",
+    "statement": "78be895f94a0de4e"
+  },
+  "REQ-IMP-001": {
+    "title": "Import from a chosen file or drag-and-drop",
+    "statement": "24a7aa805a4f790a"
+  },
+  "REQ-IMP-002": {
+    "title": "Format detection",
+    "statement": "7f2d22daf922aff9"
+  },
+  "REQ-IMP-003": {
+    "title": "Validation against vendored schemas",
+    "statement": "4134efae6f5cf0a4"
+  },
+  "REQ-IMP-004": {
+    "title": "Referential integrity is checked and reported",
+    "statement": "cdae639ee5ad4794"
+  },
+  "REQ-IMP-005": {
+    "title": "Imports become a root commit",
+    "statement": "e521f5b002ee8d91"
+  },
+  "REQ-IMP-006": {
+    "title": "Provenance is recorded",
+    "statement": "c11cd1beaa4fe629"
+  },
+  "REQ-IMP-007": {
+    "title": "Import never merges silently",
+    "statement": "816f4b2c42db2a2c"
+  },
+  "REQ-IMP-008": {
+    "title": "Imported HTML is never executed",
+    "statement": "f7b5b612ff8aaf1d"
+  },
+  "REQ-IMP-009": {
+    "title": "Round trips are stable",
+    "statement": "5a09c4d127653546"
+  },
+  "REQ-IMP-010": {
+    "title": "Import reports are retained",
+    "statement": "940d24c835a901cc"
+  },
+  "REQ-SEC-001": {
+    "title": "Content-security policy with a pinned script hash",
+    "statement": "fd6ad1ade67bd5ac"
+  },
+  "REQ-SEC-002": {
+    "title": "No dynamic code execution",
+    "statement": "06f83668e7d2db57"
+  },
+  "REQ-SEC-003": {
+    "title": "All model text is escaped on render",
+    "statement": "cda82798aecea105"
+  },
+  "REQ-SEC-004": {
+    "title": "Untrusted SVG is sanitized or sandboxed",
+    "statement": "882cafe0669e92d3"
+  },
+  "REQ-SEC-005": {
+    "title": "Foreign application versions are flagged",
+    "statement": "b018737e8d154b72"
+  },
+  "REQ-SEC-006": {
+    "title": "The application states its own threat model",
+    "statement": "5f84e8caedd92835"
+  },
+  "REQ-SEC-007": {
+    "title": "Imported content is untrusted regardless of appearance",
+    "statement": "83e20a6ccf7d3e28"
+  },
+  "REQ-SEC-008": {
+    "title": "No telemetry",
+    "statement": "8feb4f4061eeaf1c"
+  },
+  "REQ-SHELL-001": {
+    "title": "One distributable file",
+    "statement": "fe933b680f6d4631"
+  },
+  "REQ-SHELL-002": {
+    "title": "Classic inline script, not a module",
+    "statement": "a6ff962e28b094ca"
+  },
+  "REQ-SHELL-003": {
+    "title": "Build produces the artifact",
+    "statement": "98d47faa7ef655dc"
+  },
+  "REQ-SHELL-004": {
+    "title": "Runs from `file://` and `http(s)://`",
+    "statement": "329a183c1b275fca"
+  },
+  "REQ-SHELL-005": {
+    "title": "Browser support matrix",
+    "statement": "e6bce2ff600c15db"
+  },
+  "REQ-SHELL-006": {
+    "title": "Graceful degradation without JavaScript",
+    "statement": "ef307387f56c165d"
+  },
+  "REQ-SHELL-007": {
+    "title": "No network calls beyond pinned CDN assets",
+    "statement": "f80e5b7c5d237872"
+  },
+  "REQ-STORE-001": {
+    "title": "Persistence sits behind an adapter",
+    "statement": "4992f0731ca0a8d8"
+  },
+  "REQ-STORE-002": {
+    "title": "Keys are namespaced",
+    "statement": "f9244553dd546dc7"
+  },
+  "REQ-STORE-003": {
+    "title": "The registry is seeded on every load",
+    "statement": "5a3b803b2433a11b"
+  },
+  "REQ-STORE-004": {
+    "title": "Switching models",
+    "statement": "ef044bde787139d4"
+  },
+  "REQ-STORE-005": {
+    "title": "Deleting a stored model",
+    "statement": "89b9274d60c96b1b"
+  },
+  "REQ-STORE-006": {
+    "title": "Quota is managed without data loss",
+    "statement": "3d78f2f9703c1d7a"
+  },
+  "REQ-STORE-007": {
+    "title": "Storage unavailable degrades gracefully",
+    "statement": "0b6a39a4f4d549a8"
+  },
+  "REQ-STORE-008": {
+    "title": "Unreachable commits are collected",
+    "statement": "a9ad334c4a5114ff"
+  },
+  "REQ-SYNC-001": {
+    "title": "Reconcile runs on every open",
+    "statement": "caf9ba9c8933a6b3"
+  },
+  "REQ-SYNC-002": {
+    "title": "Embedded ahead fast-forwards",
+    "statement": "72123f438d26bd4b"
+  },
+  "REQ-SYNC-003": {
+    "title": "Local ahead is used, and the file is offered for refresh",
+    "statement": "5c289836974ae141"
+  },
+  "REQ-SYNC-004": {
+    "title": "Identical histories are a no-op",
+    "statement": "ab15a14c8ce37c02"
+  },
+  "REQ-SYNC-005": {
+    "title": "Divergent histories prompt",
+    "statement": "a0e73fa2ed85bcab"
+  },
+  "REQ-SYNC-006": {
+    "title": "Unrelated models never merge",
+    "statement": "9f8a10917fdc51bc"
+  },
+  "REQ-SYNC-007": {
+    "title": "Reconcile never depends on shared origin storage",
+    "statement": "e15460977664f11c"
+  },
+  "REQ-SYNC-008": {
+    "title": "Storage partitioning is detected and explained",
+    "statement": "1e9d984dc7e3fdaa"
+  },
+  "REQ-UI-001": {
+    "title": "Carbon UI Shell",
+    "statement": "66d9e3ae7e368bbe"
+  },
+  "REQ-UI-002": {
+    "title": "Nine top-level tabs",
+    "statement": "4e06b9c37b90b1cc"
+  },
+  "REQ-UI-003": {
+    "title": "Side nav carries per-tab sub-sections",
+    "statement": "c285a3b051b73974"
+  },
+  "REQ-UI-004": {
+    "title": "Model switcher and delete live in the header",
+    "statement": "398294ba3d868126"
+  },
+  "REQ-UI-005": {
+    "title": "Theme switching",
+    "statement": "1550ec32d33a05fe"
+  },
+  "REQ-UI-006": {
+    "title": "Responsive layout",
+    "statement": "3b24943de7dd9bd0"
+  },
+  "REQ-UI-007": {
+    "title": "Accessibility",
+    "statement": "3ed096e07e8d41ff"
+  },
+  "REQ-UI-008": {
+    "title": "No inline event handlers",
+    "statement": "0de41ea3e6f54a51"
+  },
+  "REQ-UI-009": {
+    "title": "Notifications for outcomes",
+    "statement": "5102c39a7f0b60d5"
+  },
+  "REQ-UI-010": {
+    "title": "Behaviour inventory is documented",
+    "statement": "d5d014758d5d5613"
+  },
+  "REQ-UI-011": {
+    "title": "No framework runtime",
+    "statement": "d5afdfde96132fd9"
+  },
+  "REQ-UI-012": {
+    "title": "Carbon version is pinned and verified",
+    "statement": "a92d29aa9595debc"
+  },
+  "REQ-VCS-001": {
+    "title": "A commit is a content-addressed node",
+    "statement": "ea0137ada42add6c"
+  },
+  "REQ-VCS-002": {
+    "title": "Hash chaining detects tampering",
+    "statement": "11c7ece8711bef12"
+  },
+  "REQ-VCS-003": {
+    "title": "Canonical serialization is stable",
+    "statement": "404c6674a2b9e93a"
+  },
+  "REQ-VCS-004": {
+    "title": "Commits capture the working copy",
+    "statement": "7abfa7b215364e52"
+  },
+  "REQ-VCS-005": {
+    "title": "History is stored as deltas with keyframes",
+    "statement": "7cb15976dcc9ff9c"
+  },
+  "REQ-VCS-006": {
+    "title": "Reconstruction is lossless",
+    "statement": "906a4aeba27116d1"
+  },
+  "REQ-VCS-007": {
+    "title": "Timestamps are informational only",
+    "statement": "eb597fc2845534eb"
+  },
+  "REQ-VCS-008": {
+    "title": "Ancestry defines \"newer\"",
+    "statement": "6e25f12e245ac7e0"
+  },
+  "REQ-VCS-009": {
+    "title": "Divergence requires an explicit decision",
+    "statement": "7fd07de8491c1f27"
+  },
+  "REQ-VCS-010": {
+    "title": "Merge base is the lowest common ancestor",
+    "statement": "a6b254a66ca980ae"
+  },
+  "REQ-VCS-011": {
+    "title": "Merge commits record both parents",
+    "statement": "42861d54294f9d8e"
+  },
+  "REQ-VCS-012": {
+    "title": "Uncommitted changes block merging",
+    "statement": "9984073828350607"
+  },
+  "REQ-VCS-013": {
+    "title": "Rollback is forward-only",
+    "statement": "0d40d6f779c177f0"
+  },
+  "REQ-VCS-014": {
+    "title": "Undo and redo within the working copy",
+    "statement": "5bc2cd4842458cbb"
+  },
+  "REQ-VCS-015": {
+    "title": "Commit messages and authors are required",
+    "statement": "8951435f72ec817a"
+  },
+  "REQ-VIEW-001": {
+    "title": "All entity types are viewable",
+    "statement": "16d4ff83248f8533"
+  },
+  "REQ-VIEW-002": {
+    "title": "Tables support sorting, filtering, and search",
+    "statement": "960e7f5d5e26740d"
+  },
+  "REQ-VIEW-003": {
+    "title": "Detail views show every field and its provenance",
+    "statement": "9c9f70158ad74995"
+  },
+  "REQ-VIEW-004": {
+    "title": "Diagrams from coordinate data render natively",
+    "statement": "be1b72a6d1107afb"
+  },
+  "REQ-VIEW-005": {
+    "title": "Diagram source text is rendered per type",
+    "statement": "48048e501bb9ecff"
+  },
+  "REQ-VIEW-006": {
+    "title": "Risk is presented in the model's own terms",
+    "statement": "c059bda2059753e1"
+  },
+  "REQ-VIEW-007": {
+    "title": "Unresolved references are visible",
+    "statement": "95f3ed25cdec6b08"
+  },
+  "REQ-VIEW-008": {
+    "title": "Read-only mode",
+    "statement": "84882781baaaf897"
+  },
+  "REQ-VIEW-009": {
+    "title": "Large models stay responsive",
+    "statement": "ef1dabfbe4fd652d"
+  }
+}

@@ -1,0 +1,114 @@
+/*
+ * 01-print.css — printing the page the browser is already showing.
+ *
+ * WHAT THIS IS NOT
+ *
+ * A designed print or PDF deliverable — a paginated report with a cover, a contents page and a
+ * layout built for paper — is **not** in scope. `10-open-questions.md` OQ-14 records it as "not
+ * requested", and `02-architecture.md` §8 lists this file in the source layout as the place it would
+ * go. So this is the placeholder that claim leaves behind: enough that Ctrl‑P produces something
+ * legible rather than a screenshot of a web application, and nothing that pretends to be the
+ * deliverable.
+ *
+ * WHY IT IS NOT EMPTY
+ *
+ * An empty file would mean the browser's own default, and the default for this page is wrong in one
+ * specific way: the header, the side nav and the tab strip are all `position: fixed`, so they paint
+ * once on the first sheet and the navigation of a nine-tab application is printed as a column of
+ * links the reader cannot click. Hiding them is the difference between "a page of the model" and
+ * "a page of furniture".
+ *
+ * The three rules that matter, and nothing else:
+ *
+ *   1. Hide the interactive chrome; the content becomes the page.
+ *   2. Print the background colours of the risk matrix. Browsers drop backgrounds by default, and a
+ *      heat map with no heat in it is a grid of numbers — the band colours are load-bearing there,
+ *      which is also why the matrix carries the score and the count as text.
+ *   3. Keep the model's own text from being cut off at the sheet edge: `overflow` on the diagram and
+ *      the tables is a screen affordance, and paper has no scrollbar.
+ */
+
+@media print {
+  .cds--header,
+  .tmv-header,
+  .tmv-tabs,
+  .tmv-side-nav,
+  .tmv-notifications,
+  .tmv-banners,
+  .cds--skip-to-content,
+  .tmv-empty__actions,
+  .tmv-dialog__actions,
+  .tmv-screen__actions,
+  .tmv-settings__actions,
+  .tmv-compare__toolbar,
+  .cds--modal,
+  .cds--overflow-menu-options,
+  .tmv-sidenav-trigger {
+    display: none !important;
+  }
+
+  /* The chrome is fixed, so the content's offsets for it are no longer offsets for anything. */
+  html,
+  body {
+    background: #ffffff;
+    color: #000000;
+  }
+
+  .tmv-content,
+  .tmv-side-nav--expanded ~ .tmv-content {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* A link the reader cannot follow is worse than the same text unadorned; the ones inside the
+     content that go somewhere real keep their underline and nothing else changes. */
+  a[href] {
+    text-decoration: underline;
+  }
+
+  /* The heat map needs its colour, and its text colour comes with it so the contrast holds on
+     paper as well as on screen. */
+  .tmv-matrix__cell,
+  .tmv-matrix__swatch,
+  .tmv-meter__fill,
+  .tmv-dot,
+  .tmv-readiness,
+  .tmv-retained__entry,
+  .tmv-compare__pane {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Paper has no scrollbar, so anything the screen scrolls has to be allowed to break instead. */
+  .tmv-code,
+  .tmv-diagram__figure,
+  .tmv-diagram__canvas,
+  .tmv-matrix-wrap,
+  .tmv-table,
+  .tmv-table__scroll {
+    overflow: visible !important;
+    max-block-size: none !important;
+    max-inline-size: none !important;
+  }
+
+  .tmv-diagram__svg {
+    max-block-size: 100vh;
+  }
+
+  /* Sections and diff rows are the natural page units; keeping a heading with the thing it heads is
+     the one bit of pagination worth stating. */
+  .tmv-section,
+  .tmv-settings__block,
+  .tmv-readiness,
+  .tmv-diff {
+    break-inside: avoid;
+  }
+
+  .tmv-content h1,
+  .tmv-content h2,
+  .tmv-section__title,
+  .tmv-subhead,
+  .tmv-diff__title {
+    break-after: avoid;
+  }
+}

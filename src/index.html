@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en" class="cds--white">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Must precede every script it governs (02-architecture.md §5, REQ-SEC-001). -->
+  <meta http-equiv="Content-Security-Policy" content="{{CSP}}">
+
+  <title>Threat-Model-Viewport</title>
+  <meta name="tmv-app-version" content="{{APP_VERSION}}">
+  <meta name="tmv-app-hash" content="{{APP_HASH}}">
+  <meta name="tmv-build-time" content="{{BUILD_TIME}}">
+  <meta name="description" content="A decentralized, single-file threat-model viewport.">
+
+  <!--
+    The one unconditional third-party asset, and the only deviation from REQ-SHELL-001 (ADR-0002).
+    Exact version, SRI, crossorigin. The seam: nothing but build.mjs and this line knows Carbon
+    comes from a CDN.
+  -->
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/@carbon/styles@1.116.0/css/styles.min.css"
+        integrity="sha384-gYQeZbdal8FzOSXLJtbKBV3RR1DLpadVkckScRc/p+SMtKTLx1T2vrmokf34/s3k"
+        crossorigin="anonymous">
+
+  <style>{{APP_CSS}}</style>
+</head>
+<body class="cds--body">
+
+  <a class="cds--skip-to-content" href="#tmv-content">Skip to main content</a>
+
+  <noscript>
+    <div class="tmv-noscript">
+      <h1>JavaScript is required</h1>
+      <p>
+        Threat-Model-Viewport is a single-file application: the viewer, the editor and the version
+        control client are all JavaScript running in this page. With JavaScript disabled the interface
+        cannot be rendered and the embedded model cannot be read.
+      </p>
+      <p>
+        Your threat model is not lost — it is embedded in this file as JSON, in the
+        <code>&lt;script type="application/json" id="tmv-data"&gt;</code> element. Enable JavaScript
+        and reload to open it.
+      </p>
+    </div>
+  </noscript>
+
+  <header class="cds--header" id="tmv-header">
+    <!--
+      The side-nav trigger. Carbon's own menu trigger, and the only control the `sm` breakpoint adds
+      (07-ui.md §7): at `md` and above the side nav is permanently in the layout and this is not
+      displayed, which is why it can be authored unconditionally rather than built by a media query
+      listener. `17-shell.js` gives it `data-action="toggle-side-nav"` at mount and keeps
+      `aria-expanded` in step with the nav's collapsed state.
+    -->
+    <button type="button" class="cds--header__action cds--header__menu-trigger tmv-sidenav-trigger"
+            id="tmv-sidenav-trigger" aria-label="Open section navigation" aria-expanded="false"
+            aria-controls="tmv-side-nav">
+      <span class="tmv-icon tmv-icon--menu" aria-hidden="true"></span>
+    </button>
+
+    <span class="cds--header__name tmv-header__name">
+      <span class="tmv-header__mark" aria-hidden="true"></span>
+      <span class="cds--header__name--prefix tmv-header__prefix">Threat-Model-</span>Viewport
+    </span>
+
+    <div class="cds--header__global tmv-header__global">
+      <!--
+        The storage-degraded indicator (REQ-STORE-007, 07-ui.md §9), hidden until something is
+        actually wrong. A label rather than a control: the notice it summarises is already on screen
+        as a persistent banner that carries whatever actions apply, so a button here would either
+        duplicate that or do nothing — and this element used to be one, which is how it came to sit
+        in the header for months with no code anywhere unhiding it.
+      -->
+      <span class="tmv-header__notice" id="tmv-storage-notice" hidden>
+        <span class="tmv-dot tmv-dot--warning" aria-hidden="true"></span>
+        <span id="tmv-storage-notice-text"></span>
+      </span>
+
+      <span class="tmv-dirty" id="tmv-dirty" hidden>
+        <span class="tmv-dot tmv-dot--attention" aria-hidden="true"></span>
+        <span id="tmv-dirty-text">Uncommitted changes</span>
+      </span>
+
+      <button type="button" class="cds--btn cds--btn--primary cds--btn--sm" id="tmv-commit" disabled
+              title="Nothing to commit — the working copy matches the head commit">
+        Commit
+      </button>
+
+      <!--
+        The model switcher's mount point (REQ-UI-004). A `div`, not the button it replaces:
+        `renderSwitcher()` empties it and appends its own `role="combobox"` button, and a button
+        inside a button is neither valid markup nor a control a browser will deliver a click to.
+        What is here before boot is a placeholder for the moment between parse and first render.
+      -->
+      <div class="tmv-switcher-host" id="tmv-model-switcher">
+        <span class="cds--header__action tmv-switcher tmv-switcher--placeholder">
+          <span class="tmv-switcher__name">…</span>
+        </span>
+      </div>
+
+      <!--
+        Import, export, delete and the theme chooser (07-ui.md §4). Both are overflow menus rather
+        than header space, and `renderActions()` builds them into this host; empty here so that
+        nothing in the pristine file advertises an action the file itself cannot take.
+      -->
+      <div class="tmv-header-actions" id="tmv-header-actions"></div>
+    </div>
+  </header>
+
+  <!--
+    The side nav, and it is here — before everything it displaces — rather than inside the shell
+    column, for one layout reason and no other.
+
+    Carbon makes it `position: fixed`, so it is out of flow and contributes nothing to any track: the
+    regions beside it have to be offset by a rule that reads its state, and a general sibling
+    combinator only looks forward. With the nav first, *one* declaration moves the whole shell —
+    tab strip, banners and content together — and nothing has to be stated twice or discovered by
+    trying it at each breakpoint.
+
+    `07-ui.md` §1 draws it inside the body row, which is what the markup was; the drawing is of the
+    rendered result and this is the same result, arrived at without four offsets that have to agree.
+  -->
+  <nav class="cds--side-nav cds--side-nav--ux tmv-side-nav" id="tmv-side-nav"
+       aria-label="Section contents">
+    <ul class="cds--side-nav__items" id="tmv-side-nav-items"></ul>
+  </nav>
+
+  <!--
+    Everything to the right of the nav, in one element so that the offset above is one declaration.
+
+    The tab strip is empty and built by `renderTabs()` from the shell's own `TABS` list
+    (07-ui.md §2). Authored here rather than in a module because it is a mount point, and left
+    *unpopulated* because a second copy of the tab list in the frame is a second source of truth for
+    the ids, labels and order the shell already owns — one that can disagree, and did: the tabs this
+    file used to carry had neither `data-value` nor `data-action`, so no tab could be marked selected
+    or clicked at all, and nothing in a DOM dump of the content region would have shown it.
+  -->
+  <div class="tmv-shell" id="tmv-shell">
+    <div class="cds--tabs cds--tabs--contained tmv-tabs" id="tmv-tabs"></div>
+
+    <!--
+      Banners that must be visible from every tab (REQ-SYNC-003, REQ-STORE-007, REQ-VIEW-008).
+
+      Above the content rather than below it, which is where it started and where it was wrong: a
+      banner that a long section pushes off the bottom of the window is not "visible from every tab",
+      it is visible from the end of every tab. `07-ui.md` §9's storage and origin notices are the two
+      the table calls out as the most common confusing moment in the product, and neither is worth
+      discovering by scrolling.
+
+      No `aria-live` here: each banner carries its own role and politeness (13-notify.js), because a
+      live region on the container would announce an error politely and then announce it again when
+      its own alert role fired.
+    -->
+    <div class="tmv-banners" id="tmv-banners"></div>
+
+    <main class="cds--content tmv-content" id="tmv-content" role="tabpanel"
+          aria-labelledby="tmv-tab-overview" tabindex="-1"></main>
+  </div>
+
+  <div class="tmv-notifications" id="tmv-notifications"></div>
+
+  <!-- Screen-reader announcements for commit, reconcile, import, export and errors (REQ-UI-007). -->
+  <div class="cds--visually-hidden" id="tmv-live" role="status" aria-live="polite"></div>
+
+  <!-- Modals, menus, dialogs — built on demand, never present in the pristine export. -->
+  <div id="tmv-layers"></div>
+
+  <!--
+    The Mermaid renderer, declared but inert (ADR-0010, REQ-VIEW-005).
+
+    It lives in a `template` because template contents are never fetched, never executed and never
+    rendered: this element costs nothing until `14-diagrams.js` clones it, and only when a Mermaid
+    diagram is actually displayed. Declaring it here rather than building it in code keeps the one
+    third-party script in the app as *static text* — the version and the integrity digest are both
+    visible to a reader of the file and to the build's own static analysis, and re-pinning Mermaid is
+    an edit to `vendor/` that the build verifies rather than a digest typed into a module.
+  -->
+  <template id="tmv-mermaid-loader">
+    <script src="{{MERMAID_SRC}}" integrity="{{MERMAID_SRI}}" crossorigin="anonymous"></script>
+  </template>
+
+  <!-- Container: the canonical model plus its full history. A data block, not executable script. -->
+  <script type="application/json" id="tmv-data">{{APP_DATA}}</script>
+
+  <!-- The application. One classic inline script, hash-pinned by the CSP above. -->
+  <script id="tmv-app">{{SCHEMAS}}
+{{MERMAID_VERSION}}
+{{APP_JS}}</script>
+</body>
+</html>

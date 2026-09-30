@@ -340,12 +340,15 @@ src/
     09-tml.js               # TML mapping both directions
     10-import.js            # detection, validation, reports
     11-export.js            # interchange export, app re-export, download
-    12-shell.js             # header, tabs, side nav, theme — hand-written Carbon wiring
-    13-views-*.js           # one per tab group
-    14-forms.js             # create/edit/delete, validation, references
-    15-compare.js           # divergence compare + merge resolution
-    16-notify.js            # notifications, errors
-    99-boot.js              # §6
+    12-widgets.js           # the hand-written Carbon component kit (ADR-0002, 07-ui.md §5)
+    13-notify.js            # notifications, errors
+    14-diagrams.js          # Mermaid rendering, lazily loaded
+    15-forms.js             # create/edit/delete, validation, references
+    16-compare.js           # divergence compare + merge resolution
+    17-shell.js             # header, tabs, side nav, theme — hand-written Carbon wiring
+    18-views-shared.js      # the kit every view renders through (tables, detail, provenance)
+    18-views-*.js           # one per tab, in tab order
+    19-boot.js              # §6
 vendor/
   otm_schema.json
   tml_schema.json
