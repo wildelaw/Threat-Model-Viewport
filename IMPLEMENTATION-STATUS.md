@@ -657,6 +657,29 @@ the working copy untouched, and that confirming is the only thing that moves the
   notice appears *because* the browser is Firefox: `sync.partition-detected` covers the same branch in
   the unit harness with `isFirefox: true`, and the disclosure's wording is asserted there, but the claim
   "a real Firefox shows this" is not verified on this machine and is not claimed anywhere.
+
+  That skip cost more than it looked like it would, and the shape of the cost is worth recording. Boot
+  read the registry *after* `seedRegistry` had written the file's own entry into it, so the
+  `registryEmpty` half of the heuristic was false on every load, in every browser: the
+  `FILE_ORIGIN_PARTITIONED` branch was unreachable in the shipped code, and `REQ-SYNC-008` AC1 could
+  never be satisfied. Nothing in the unit suite could see it — `store.origin-partitioned` and
+  `sync.partition-detected` both call `detectStorageContext` by hand, so they assert the classifier
+  answers correctly without ever asking whether boot supplies the right input — and the one test that
+  drives real boot on a real Firefox is the one that skips here. It was failing on CI, which has
+  Firefox, and had been since the first commit. Two changes: boot now reads the registry as it found it,
+  before seeding, and `sync.partition-detected` drives the real open path with the engine and protocol
+  supplied the way the platform supplies them, so the wiring is covered where the engine is not
+  available. The skip remains, and the honest reading of it is unchanged: the branch is verified in a
+  Firefox *user agent* and not in a Firefox.
+
+  The same test held a second, quieter defect. It addressed the banner's action as
+  `[data-action="export-now"]`, but a notification's actions all carry
+  `data-action="notify-action"` and name *which* one in `data-value` — the component owns "a click
+  landed on one of my actions" and the shell branches on the value, which is the same shape toasts use.
+  So the locator matched nothing and `toBeGreaterThan(0)` would have failed as well. It never ran: the
+  assertion above it failed first, and a test that fails at its third line does not report its fifth.
+  One defect standing in front of another is why the selector survived review on a branch where the
+  case had never once passed.
 - **V1–V4 in `09-testing.md` §6 remain unverified** — whether a JSON script block is exempt from a
   hash-only `script-src` on `file://`; whether `<meta>`-delivered CSP is enforced on `file://`; the
   actual state classes in the pinned Carbon stylesheet; and the pinned Mermaid version's

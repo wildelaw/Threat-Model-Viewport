@@ -155,7 +155,12 @@ test.describe('Firefox, from disk', () => {
         banner,
         'the notice names the partitioning but not the way round it',
       ).toMatch(/exporting a new copy is the reliable way to carry work between paths|file-based/i);
-      const offer = page.locator('#tmv-banners [data-action="export-now"]');
+      // A notification's actions all carry `data-action="notify-action"` and name *which* one in
+      // `data-value` — the component owns "a click landed on one of my actions" and the shell branches
+      // on the value, which is the same shape toasts use. Addressing the banner by the action's own
+      // name found nothing, so this assertion was passing over an empty selector for as long as the
+      // banner above was unreachable: the two defects hid each other.
+      const offer = page.locator('#tmv-banners [data-action="notify-action"][data-value="export-now"]');
       expect(
         await offer.count(),
         'the notice offers no action, so the workaround is a sentence rather than a route',

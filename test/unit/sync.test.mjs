@@ -478,4 +478,44 @@ specTest('sync.partition-detected', () => {
   const action = banner.querySelector('[data-action="notify-action"]');
   assert.ok(action, 'and it offers a way forward');
   assert.equal(action.getAttribute('data-value'), 'export-now', 'the file-based path');
+
+  // --- and boot asks the question -------------------------------------------------------------
+  //
+  // Everything above asserts the classifier, which is a pure function: it answers correctly whether
+  // or not anything ever hands it the right input. What it could not see is whether boot *reads* the
+  // registry it is being asked about at the right moment, and it did not — the read happened after
+  // `seedRegistry` had already written the file's entry into it. `registryEmpty` was therefore false
+  // on every load, in every browser, and this branch was unreachable outside a test that called the
+  // classifier by hand. The end-to-end case (`e2e.file-protocol.firefox`) is what caught it, and only
+  // on a machine that can launch Firefox, which is not this one; so the wiring is asserted here, on
+  // the real open path, with the engine and the protocol supplied the way the platform supplies them.
+  const firefoxUA = 'Mozilla/5.0 (X11; Linux x86_64; rv:142.0) Gecko/20100101 Firefox/142.0';
+  const env = browser({ protocol: 'file:', userAgent: firefoxUA });
+  const embedded = model('On disk', FIXTURE_MODEL_ID);
+  const carried = root(embedded, FIXTURE_MODEL_ID, 'carried-root');
+
+  const first = openFile(env, C.makeContainer(embedded, carried, { appHash: null }));
+  assert.equal(
+    first.storage.context,
+    S.FILE_ORIGIN_PARTITIONED,
+    'a first load from disk in Firefox is the case the notice exists for, and nothing was stored for this file',
+  );
+  assert.equal(first.storage.certain, false, 'and it is still offered as a likely explanation rather than a finding');
+  assert.notEqual(
+    env.localStorage._data[S.REGISTRY_KEY],
+    undefined,
+    'the seeding still ran — it is the *measurement* that had to precede it, not the seeding that had to stop',
+  );
+
+  // The other side of the same wiring, and the reason it is not simply a constant: the second open
+  // finds a registry, so the ambiguity resolves the boring way. A detection that read "no history for
+  // this model" instead of "nothing at all in this origin" would say the opposite here.
+  const second = openFile(env, C.makeContainer(embedded, carried, { appHash: null }));
+  assert.equal(second.storage.context, S.FILE_ORIGIN, 'the second load has a registry, so nothing is partitioned');
+  assert.equal(second.storage.certain, true, 'and there is nothing left to hedge about');
+  assert.match(
+    second.storage.message,
+    /Browsers treat local files as their own storage area/,
+    'which is the ordinary file-origin explanation, not the Firefox one',
+  );
 });
