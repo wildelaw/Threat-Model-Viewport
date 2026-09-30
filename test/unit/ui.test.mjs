@@ -459,3 +459,132 @@ specTest('ui.notifications', () => {
   assert.ok(banner.classList.contains('cds--inline-notification'), 'a live condition is an inline notification');
   assert.ok(banner.classList.contains('cds--inline-notification--warning'));
 });
+
+specTest('ui.model-details-affordance', () => {
+  // REQ-EDIT-011 AC4: the model's own fields are reachable from where the user already is, and every
+  // affordance is *absent* rather than disabled when the model is read-only (REQ-VIEW-008, `07-ui.md`
+  // §9). Four places are named, and they are four separate wirings — a test that checked one would
+  // pass while a user standing in Settings had no way to rename anything.
+  const state = loadShell({ stored: true });
+  const { dom, shell, model } = state;
+
+  const content = () => dom.body.querySelector('#tmv-content');
+  /** The innermost modal is the newest one; the stub keeps closed ones attached. */
+  const lastModal = () => {
+    const modals = dom.body.querySelectorAll('.cds--modal');
+    return modals[modals.length - 1] || null;
+  };
+  /** Open the model-details dialog the way a click does, and hand back the dialog's node. */
+  function clickAndReadDialog(node) {
+    node.click();
+    const modal = lastModal();
+    assert.ok(modal, 'a dialog opened');
+    assert.ok(modal.querySelectorAll('[data-action="model-name"]')[0], 'it is the model-details dialog');
+    return modal;
+  }
+
+  // 1. The Overview heading, which is the first place someone looks for the model's name.
+  shell.go('overview');
+  const overviewButtons = content().querySelectorAll('[data-action="edit-model"]');
+  assert.equal(overviewButtons.length, 1, 'the Overview heading offers model details');
+  clickAndReadDialog(overviewButtons[0]);
+  assert.equal(
+    lastModal().querySelectorAll('[data-action="model-name"]')[0].value,
+    'Payments Platform',
+    'showing the model that is open',
+  );
+
+  // 2. The header's "Model and file actions" menu, which is where the file-level operations live —
+  //    a per-entry control inside the switcher is not valid ARIA, which is why Delete is here too.
+  const fileMenu = openMenu(dom, '#tmv-menu-file-trigger', '#tmv-menu-file');
+  const headerItem = fileMenu.querySelectorAll('[data-action="edit-model"]');
+  assert.equal(headerItem.length, 1, 'the header menu offers it');
+  assert.match(headerItem[0].textContent, /Edit model details/, 'under its own name');
+  clickAndReadDialog(headerItem[0]);
+
+  // 3. Settings → Model, both the section itself and the row in the side nav.
+  shell.go('settings', 'model');
+  same(
+    navLabels(dom).slice(0, 3),
+    ['Model', 'Identity', 'Storage'],
+    'the Settings nav opens with the model, because §3 does',
+  );
+  const settingsButtons = content().querySelectorAll('[data-action="edit-model"]');
+  assert.equal(settingsButtons.length, 1, 'the Model section offers it');
+  assert.match(content().textContent, /Payments Platform/, 'and shows the model’s name');
+  assert.match(content().textContent, /Card payments and settlement/, 'and its description');
+  clickAndReadDialog(settingsButtons[0]);
+
+  // 4. The Storage table, one row per stored model, named by `data-value` so the click lands on the
+  //    model the row is about rather than whichever one happens to be open.
+  shell.go('settings', 'storage');
+  const rowButtons = content().querySelectorAll('[data-action="edit-model"]');
+  assert.equal(rowButtons.length, 1, 'the stored model’s row offers it');
+  assert.equal(rowButtons[0].getAttribute('data-value'), model.modelId, 'carrying the row’s model id');
+  assert.match(rowButtons[0].getAttribute('aria-label'), /Edit the details of/, 'and an accessible name that says which');
+  clickAndReadDialog(rowButtons[0]);
+
+  // The header follows the working copy before the commit, so a rename is visible where the user
+  // already is rather than only after it is committed — but only for the current *registry* entry.
+  const triggerName = (state) =>
+    state.dom.body.querySelector('#tmv-model-trigger .tmv-switcher__name').textContent;
+  const optionName = (state, value) => {
+    const option = state.dom.body
+      .querySelectorAll('#tmv-model-list [role="option"]')
+      .find((o) => o.getAttribute('data-value') === value);
+    return option.querySelector('.tmv-switcher__entry-name').textContent;
+  };
+  const embeddedBefore = optionName(state, shell.FILE_VALUE);
+  shell.go('settings', 'model');
+  content().querySelectorAll('[data-action="edit-model"]')[0].click();
+  const nameField = lastModal().querySelectorAll('[data-action="model-name"]')[0];
+  nameField.value = 'Renamed in the working copy';
+  nameField.dispatch('input', { target: nameField });
+  lastModal().querySelectorAll('[data-action="save"]')[0].click();
+  assert.equal(triggerName(state), 'Renamed in the working copy', 'the header shows the uncommitted name');
+  assert.equal(
+    optionName(state, shell.FILE_VALUE),
+    embeddedBefore,
+    'while the embedded entry keeps the file’s name, which a rename never rewrites',
+  );
+  assert.equal(shell.isDirty(), true, 'and nothing has been committed');
+
+  // With the file's own model open, the header keeps the file's name for that same reason: the entry
+  // names the file, not the history a rename would be committed into.
+  const fromFile = loadShell({});
+  const fileTriggerBefore = triggerName(fromFile);
+  openMenu(fromFile.dom, '#tmv-menu-file-trigger', '#tmv-menu-file')
+    .querySelectorAll('[data-action="edit-model"]')[0]
+    .click();
+  const modals = fromFile.dom.body.querySelectorAll('.cds--modal');
+  const fileModal = modals[modals.length - 1];
+  const fileField = fileModal.querySelectorAll('[data-action="model-name"]')[0];
+  fileField.value = 'Renamed while the file is open';
+  fileField.dispatch('input', { target: fileField });
+  fileModal.querySelectorAll('[data-action="save"]')[0].click();
+  assert.equal(triggerName(fromFile), fileTriggerBefore, 'the file entry still names the file');
+  assert.equal(
+    fromFile.shell.state().model.name,
+    'Renamed while the file is open',
+    'though the working copy is renamed, so the difference is the point rather than a lag',
+  );
+
+  // A read-only model offers none of the four. Absent, not disabled: a dead control in a menu or a
+  // table row invites the user to work out what would make it live, and the header banner has
+  // already said what.
+  const readOnly = loadShell({ editable: false, stored: true });
+  const roContent = () => readOnly.dom.body.querySelector('#tmv-content');
+  readOnly.shell.go('overview');
+  assert.equal(roContent().querySelectorAll('[data-action="edit-model"]').length, 0, 'not on Overview');
+  const roMenu = openMenu(readOnly.dom, '#tmv-menu-file-trigger', '#tmv-menu-file');
+  assert.equal(roMenu.querySelectorAll('[data-action="edit-model"]').length, 0, 'not in the header menu');
+  readOnly.shell.go('settings', 'model');
+  assert.equal(roContent().querySelectorAll('[data-action="edit-model"]').length, 0, 'not in Settings → Model');
+  assert.match(roContent().textContent, /read-only/, 'and the section says why instead of offering a dead button');
+  readOnly.shell.go('settings', 'storage');
+  assert.equal(
+    roContent().querySelectorAll('[data-action="edit-model"]').length,
+    0,
+    'not in a Storage row either',
+  );
+});

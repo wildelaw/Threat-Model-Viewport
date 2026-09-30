@@ -297,6 +297,18 @@
 
     var prefs = storage.readPrefs(adapter);
 
+    // The registry as this load *found* it, before the seeding below writes anything into it. This is
+    // the only thing that answers REQ-SYNC-008's question — "did this browser have anything stored for
+    // this file?" — because seeding always leaves an entry behind: measured after it, the answer is
+    // "no" on every load, in every browser, and the partitioned-storage branch is unreachable. The
+    // read is taken here and the seeding is allowed to change what is on disk afterwards.
+    var registryAsFound = [];
+    try {
+      registryAsFound = storage.readRegistry(adapter);
+    } catch (err) {
+      registryAsFound = [];
+    }
+
     // REQ-STORE-003: the registry is seeded from the file on every load, so a cleared store
     // repopulates from the file alone — and never downgrades a stored head that is ahead of the
     // file's, which is the whole reason `seedRegistry` exists as its own function.
@@ -320,7 +332,7 @@
       available: available,
       protocol: env.protocol,
       isFirefox: env.isFirefox,
-      registryEmpty: registryEntries.length === 0,
+      registryEmpty: registryAsFound.length === 0,
       // The heuristic only bites when the file itself carries history: a file with none has nothing
       // for a partitioned store to have failed to find, and saying otherwise would explain a browser
       // behaviour that did not happen.

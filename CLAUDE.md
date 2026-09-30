@@ -19,7 +19,7 @@ That means two modes of work, with different rules:
 ## The spec is load-bearing
 
 Requirements carry stable IDs (`REQ-<DOMAIN>-<NNN>`) that code and tests cite directly. Eleven domains:
-`SHELL`, `DATA`, `VCS`, `SYNC`, `STORE`, `EXP`, `IMP`, `VIEW`, `EDIT`, `UI`, `SEC` — 106 requirements
+`SHELL`, `DATA`, `VCS`, `SYNC`, `STORE`, `EXP`, `IMP`, `VIEW`, `EDIT`, `UI`, `SEC` — 107 requirements
 total, each with acceptance criteria and a `- **Test:**` line.
 
 `specs/09-testing.md` §3 specifies a test that enforces this in both directions: every requirement

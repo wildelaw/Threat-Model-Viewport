@@ -96,8 +96,8 @@ derivation and collision handling are in `06-interchange.md` §4.
 |---|---|---|---|
 | `tmvFormat` | string | ✔ | Canonical model format version. Distinct from the container's `$schema` and from any interchange version |
 | `modelId` | uuid | ✔ | Stable across copies and exports (REQ-DATA-006) |
-| `name` | string | ✔ | Model title |
-| `description` | string | | |
+| `name` | string | ✔ | Model title. Editable in the app (REQ-EDIT-011) and required — a model cannot be left unnamed |
+| `description` | string | | Editable in the app (REQ-EDIT-011) |
 | `scope` | object | | §3.1 |
 | `metadata` | object | | §3.2 |
 | entity arrays | object[] | | §4 — always present, possibly empty |

@@ -528,3 +528,126 @@ specTest('edit.bulk-partial-failure', () => {
   assert.equal(stale.failed.length, 1);
   assert.match(stale.failed[0].problems[0].message, /not in this model/i);
 });
+
+specTest('edit.model-fields', () => {
+  // REQ-EDIT-011. The model's own name and description are fields of the document rather than of any
+  // entity, so until this requirement no form could reach them: the only routes to a rename were
+  // hand-editing the embedded JSON or exporting, renaming and re-importing — which collides on
+  // `modelId` and is therefore not a rename at all.
+  //
+  // Four things are asserted, and three of them are the ones a careless implementation gets wrong:
+  // the change is an ordinary working-copy edit and reaches the head only through a commit; an empty
+  // name is refused at the field with `M.validate`'s own message; the passthrough bags and the entity
+  // arrays are the objects they already were, which is what keeps a rename away from an imported
+  // file's uninterpreted data (ADR-0004); and a read-only model is refused before a dialog exists.
+  const shell = loadShell({});
+  const { shell: s, TMV: T, core } = shell;
+
+  // The model-level passthrough bag (`03-data-model.md` §2), which is the data a rename must not be
+  // able to reach — an `otm` attribute nothing in the canonical model represents, and a `tml`
+  // extension keyed by a vendor's domain. Committed first, so the working copy starts clean and
+  // "dirty" below means the rename and nothing else.
+  const bag = {
+    otm: { attributes: { cmdbId: '1234' }, tags: ['external'] },
+    tml: { extensions: { 'example.com/custom': { keep: true } } },
+  };
+  s.state().model.x = bag;
+  const metadata = s.state().model.metadata;
+  s.state().prefs.identity = { name: 'Tester', email: 't@example.com' };
+  const setup = s.commit();
+  const setupMessage = setup.element.querySelectorAll('[data-action="commit-message"]')[0];
+  setupMessage.value = 'Carry uninterpreted fields';
+  setupMessage.dispatch('input', { target: setupMessage });
+  press(setup.element, 'commit');
+  assert.equal(s.isDirty(), false, 'the setup commit is the head');
+
+  const threats = s.state().model.threat;
+  const headBefore = s.state().history.head;
+
+  // Opening the dialog changes nothing on its own.
+  const dialog = s.editModelDetails();
+  assert.ok(dialog, 'the shell opens the model-details dialog');
+  const root = dialog.element;
+
+  const name = root.querySelectorAll('[data-action="model-name"]')[0];
+  const description = root.querySelectorAll('[data-action="model-description"]')[0];
+  assert.ok(name, 'there is a name field');
+  assert.ok(description, 'and a description field');
+  assert.equal(name.value, 'Payments Platform', 'showing the working copy’s name');
+
+  // Nothing has changed, so there is nothing to save — and the button says why rather than sitting
+  // there dead with no explanation (the read-only case is the only one that may say nothing).
+  const save = () => root.querySelectorAll('[data-action="save"]')[0];
+  assert.equal(save().hasAttribute('disabled'), true, 'Save is unavailable with no change');
+  assert.match(save().getAttribute('title'), /Nothing has changed/, 'and says so');
+
+  // An empty name is refused at the field. The check is `M.validate`'s own `MODEL_NAME` problem read
+  // back by its path, so the sentence the user sees is the one the exporter would have produced —
+  // and the dialog stays open with the field marked, rather than closing over a model that cannot
+  // be exported.
+  name.value = '   ';
+  name.dispatch('input', { target: name });
+  assert.equal(save().hasAttribute('disabled'), false, 'a change makes Save available');
+  press(root, 'save');
+  assert.equal(name.getAttribute('aria-invalid'), 'true', 'a blank name marks the field invalid');
+  assert.match(root.textContent, /The model has no name/, 'with the checker’s own message');
+  assert.equal(s.state().model.name, 'Payments Platform', 'and nothing was applied');
+  assert.equal(s.state().history.head, headBefore, 'nor was anything committed');
+
+  // A real rename, plus a description, through the dialog's own button.
+  name.value = 'Payments Platform Rebuilt';
+  name.dispatch('input', { target: name });
+  description.value = 'Cards, settlement, and the rebuilt ledger.';
+  description.dispatch('input', { target: description });
+  press(root, 'save');
+
+  assert.equal(s.state().model.name, 'Payments Platform Rebuilt', 'the rename is in the working copy');
+  assert.equal(s.state().model.description, 'Cards, settlement, and the rebuilt ledger.');
+  assert.equal(s.isDirty(), true, 'and it is an uncommitted change, not a commit');
+  assert.equal(s.state().history.head, headBefore, 'the head commit was not touched');
+  assert.equal(
+    T.vcs.headModel(s.state().history).name,
+    'Payments Platform',
+    'the committed model keeps the old name until a commit says otherwise',
+  );
+
+  // The passthrough data and the entity arrays are the objects they already were: a rename has no
+  // path by which it could reach either.
+  assert.equal(s.state().model.x, bag, 'the passthrough bag is the same object');
+  assert.equal(s.state().model.metadata, metadata, 'and so is the metadata block');
+  assert.equal(s.state().model.threat, threats, 'the threat array is the same object');
+
+  // Committing is what puts the new name into the history, through the ordinary commit flow — and
+  // the summary names the field, because `MODEL_FIELD_LABELS` describes model-level changes too.
+  const commitDialog = s.commit();
+  assert.ok(commitDialog, 'a renamed working copy offers a commit');
+  assert.match(commitDialog.element.textContent, /Model name/, 'the commit summary names the field');
+  const message = commitDialog.element.querySelectorAll('[data-action="commit-message"]')[0];
+  message.value = 'Rename the model';
+  message.dispatch('input', { target: message });
+  press(commitDialog.element, 'commit');
+
+  assert.equal(s.isDirty(), false, 'the working copy matches the new head');
+  assert.equal(s.state().history.head !== headBefore, true, 'a commit was written');
+  assert.equal(T.vcs.headModel(s.state().history).name, 'Payments Platform Rebuilt', 'carrying the new name');
+  assert.equal(
+    T.vcs.headModel(s.state().history).x.otm.attributes.cmdbId,
+    '1234',
+    'and the passthrough bag travels with it',
+  );
+  assert.equal(
+    T.vcs.headModel(s.state().history).x.tml.extensions['example.com/custom'].keep,
+    true,
+    'both halves of it, keyed by source format',
+  );
+
+  // A read-only model is refused before any dialog exists, which is where `07-ui.md` §9 puts the
+  // decision: the affordances are absent, and the API behind them refuses as well rather than relying
+  // on nothing having called it.
+  const readOnly = loadShell({ editable: false });
+  assert.equal(readOnly.shell.editModelDetails(), null, 'a read-only model opens no dialog');
+  const complained = readOnly.TMV.notify.entries().filter((e) => e.ref === 'shell.edit-model.read-only');
+  assert.equal(complained.length, 1, 'and says why, once');
+  assert.match(complained[0].detail, /without a writable history/, 'with the shell’s own reason');
+  assert.equal(core.isObject(readOnly.shell.state().model), true, 'leaving the model where it was');
+});

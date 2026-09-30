@@ -1,5 +1,5 @@
 /**
- * Forms and editing (REQ-EDIT-001 … REQ-EDIT-010).
+ * Forms and editing (REQ-EDIT-001 … REQ-EDIT-011).
  *
  * This module is the EDIT domain's implementation: one generic form driven by `TMV.model`'s `TYPES`
  * registry, the model-level operations the form performs, the dialogs those operations need, and the
@@ -527,6 +527,31 @@
   }
 
   /**
+   * The model with the given top-level fields replaced, as a new model.
+   *
+   * A shallow copy, and prototype-safe in the same way `probeModel` is: every key it does not name is
+   * shared with the model it came from rather than copied. That is the discipline the whole file runs
+   * on (decision 1) — an edit returns a new model that shares what it did not touch, so the previous
+   * model object is still the model as it was and undo needs no inverse operation.
+   *
+   * It serves both halves of the model-details save. The same call builds the object handed to
+   * `TMV.model.validate` and the object handed back to the shell, so what was checked is exactly what
+   * is applied, rather than two constructions that agree only as long as nobody edits one of them.
+   */
+  function withModelFields(model, fields) {
+    var probe = Object.create(null);
+    var keys = Object.keys(model || {});
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+      probe[k] = model[k];
+    }
+    var changed = Object.keys(fields || {});
+    for (var j = 0; j < changed.length; j++) probe[changed[j]] = fields[changed[j]];
+    return probe;
+  }
+
+  /**
    * The model's own problems with one entity, keyed by field path.
    *
    * The paths a report carries are `/typeKey/index/field/sub`, so the entity's own prefix is removed
@@ -972,15 +997,47 @@
   // 6. The change summary (REQ-EDIT-006 AC)
   // ---------------------------------------------------------------------------------------------
 
+  /**
+   * The model root's editable fields, and the one place their labels are written down.
+   *
+   * The root has more fields than this — `scope`, `metadata`, the format version and the id — and none
+   * of them is here. `modelId` is stable across copies and exports (REQ-DATA-006) and a control for it
+   * would be a control for breaking every reference in the file; `tmvFormat` is the model's own claim
+   * about which format it is written in; `scope` and `metadata` are objects whose editing rules are
+   * their own problem, and REQ-EDIT-011 is about the two fields a user means by "rename this model".
+   *
+   * `MODEL_FIELD_LABELS` is derived from this list rather than written out beside it, because the
+   * change summary in the commit dialog and the dialog's own controls must call the same field the
+   * same thing. Two lists is how "Model name" and "Name" end up shipping side by side.
+   */
+  var MODEL_FIELDS = [
+    {
+      key: 'name',
+      label: 'Model name',
+      kind: 'text',
+      required: true,
+      hint: 'Required. Shown in the model switcher, the Overview heading and the export filename.',
+    },
+    {
+      key: 'description',
+      label: 'Model description',
+      kind: 'textarea',
+      rows: 4,
+      hint: 'Optional. A sentence on what this model covers.',
+    },
+  ];
+
   /** Model-level fields, labelled. Anything else at the top level is reported by its own key. */
-  var MODEL_FIELD_LABELS = {
-    name: 'Model name',
-    description: 'Model description',
-    scope: 'Scope',
-    metadata: 'Metadata',
-    tmvFormat: 'Format version',
-    modelId: 'Model id',
-  };
+  var MODEL_FIELD_LABELS = (function () {
+    var labels = {
+      scope: 'Scope',
+      metadata: 'Metadata',
+      tmvFormat: 'Format version',
+      modelId: 'Model id',
+    };
+    for (var i = 0; i < MODEL_FIELDS.length; i++) labels[MODEL_FIELDS[i].key] = MODEL_FIELDS[i].label;
+    return labels;
+  }());
 
   /**
    * What changed between two models, counted three ways.
@@ -2197,6 +2254,149 @@
   }
 
   /**
+   * The model's own name and description (REQ-EDIT-011).
+   *
+   * The counterpart of `entityForm` for the model root. Before this, the only forms were per entity
+   * type, so the model's own name could be changed only by editing the embedded JSON or by exporting,
+   * renaming and re-importing.
+   *
+   * Four things about it are deliberate.
+   *
+   * **1. It writes only fields the user changed.** The controls start from the model's values, and a
+   * save carries a field across only when it differs from what the dialog opened with. So a field the
+   * user did not touch keeps exactly what the file had, including when that is not a string at all —
+   * `description: {…}` is a shape an import can produce and a textarea cannot show it, and rewriting it
+   * from the empty control would be a silent edit to a field nobody touched. That is the failure
+   * REQ-EDIT-009 exists to prevent at the entity level.
+   *
+   * **2. Validation is `TMV.model.validate`, not a rule written here.** "A model must have a name" is
+   * already the checker's, reported as `MODEL_NAME` at `/name` (decision 3). A copy of it in this file
+   * would drift from the checker, and the drift would show up as a model that this dialog accepts and
+   * an export refuses.
+   *
+   * **3. Only a problem with the name blocks the save.** The rest of the checker's report is about the
+   * model as a whole — a dangling reference, an entity with no title — and none of it is this dialog's
+   * to fix. Refusing a rename because an unrelated entity has a missing field would make the rename
+   * impossible to perform on exactly the models that most need one. Those problems are surfaced where
+   * they belong, against the entity that has them.
+   *
+   * **4. It does not touch the model.** It hands the changed fields to `onSave` and the caller decides,
+   * as `entityForm` does. The caller builds the next model with `withModelFields`, which shares every
+   * key the dialog did not name — so the passthrough bags and the entity arrays are the same objects
+   * they already were, and a rename cannot reach them.
+   */
+  function modelDetailsDialog(opts) {
+    var options = opts || {};
+    var model = core.isObject(options.model) ? options.model : M.createEmpty();
+    var readOnly = options.disabled === true;
+
+    var controls = Object.create(null);
+    for (var i = 0; i < MODEL_FIELDS.length; i++) {
+      var spec = MODEL_FIELDS[i];
+      controls[spec.key] = widgets.field({
+        label: spec.label,
+        kind: spec.kind,
+        rows: spec.rows,
+        required: spec.required,
+        hint: spec.hint,
+        // A key the file holds as something other than a string has no text to show, and is left out of
+        // the save by rule 1 above rather than being flattened into the empty string here.
+        value: core.isString(model[spec.key]) ? model[spec.key] : '',
+        action: 'model-' + spec.key,
+      });
+    }
+
+    function values() {
+      var out = Object.create(null);
+      for (var k = 0; k < MODEL_FIELDS.length; k++) out[MODEL_FIELDS[k].key] = controls[MODEL_FIELDS[k].key].value();
+      return out;
+    }
+
+    // What the controls showed when the dialog opened. Read once, before anything can be typed into
+    // them, and it is what "changed" is measured against.
+    var initial = values();
+
+    function changedFields() {
+      var now = values();
+      var out = Object.create(null);
+      for (var k = 0; k < MODEL_FIELDS.length; k++) {
+        var key = MODEL_FIELDS[k].key;
+        if (now[key] !== initial[key]) out[key] = now[key];
+      }
+      return out;
+    }
+
+    function nameProblem() {
+      var report = M.validate(withModelFields(model, changedFields()));
+      for (var i = 0; i < report.problems.length; i++) {
+        if (report.problems[i].path === '/name') return report.problems[i];
+      }
+      return null;
+    }
+
+    var body = [];
+    for (var b = 0; b < MODEL_FIELDS.length; b++) body.push(controls[MODEL_FIELDS[b].key].element);
+    body.push(core.el('p', {
+      class: 'tmv-dialog__note',
+      text: 'Saved to the working copy, like any other edit. It reaches the model’s history when you '
+        + 'commit, and nothing is written to storage until then.',
+    }));
+
+    var instance = widgets.modal({
+      title: 'Model details',
+      size: 'sm',
+      body: body,
+      actions: [
+        { label: 'Cancel', kind: 'tertiary', action: 'cancel' },
+        { label: 'Save', kind: 'primary', action: 'save', name: 'confirm', disabled: true, title: 'Nothing has changed yet' },
+      ],
+      initialFocus: 'first',
+      onClose: function (reason) {
+        if (options.onClose) options.onClose(reason);
+      },
+    });
+
+    function syncSave() {
+      var button = findAction(instance, 'save');
+      if (!button) return;
+      var ready = !readOnly && Object.keys(changedFields()).length > 0;
+      if (ready) button.removeAttribute('disabled');
+      else button.setAttribute('disabled', '');
+      core.setAttr(button, 'title', ready ? null : (readOnly ? 'This model is read-only' : 'Nothing has changed yet'));
+    }
+
+    for (var s = 0; s < MODEL_FIELDS.length; s++) {
+      (function (control) {
+        control.on('input', function () {
+          control.setError(null);
+          syncSave();
+        });
+      }(controls[MODEL_FIELDS[s].key]));
+    }
+    syncSave();
+
+    modalActions(instance, function (action) {
+      if (action === 'cancel') {
+        instance.close('cancel');
+        return;
+      }
+      if (action !== 'save' || readOnly) return;
+      var edited = changedFields();
+      if (!Object.keys(edited).length) return;
+      var problem = nameProblem();
+      if (problem) {
+        controls.name.setError(problem.message);
+        return;
+      }
+      instance.close('saved');
+      if (options.onSave) options.onSave(edited);
+    });
+
+    if (options.open !== false) instance.open();
+    return { element: instance.element, open: instance.open, close: instance.close, changedFields: changedFields };
+  }
+
+  /**
    * The discard confirmation (REQ-EDIT-007).
    *
    * The restored model is `vcs.headModel`, which materializes the head commit rather than replaying
@@ -2449,6 +2649,7 @@
       validateEntity: validateEntity,
       validateValues: validateValues,
       controlPath: controlPath,
+      withModelFields: withModelFields,
       planDelete: planDelete,
       derivedValue: derivedValue,
       summariseChanges: summariseChanges,
@@ -2483,6 +2684,7 @@
     entityForm: entityForm,
     deleteDialog: deleteDialog,
     commitDialog: commitDialog,
+    modelDetailsDialog: modelDetailsDialog,
     discardDialog: discardDialog,
     bulkUpdateDialog: bulkUpdateDialog,
     modalActions: modalActions,
